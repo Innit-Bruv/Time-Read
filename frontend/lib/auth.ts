@@ -20,7 +20,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     callbacks: {
         async signIn({ user }) {
             const allowedEmail = process.env.ALLOWED_EMAIL;
-            if (allowedEmail && user.email !== allowedEmail) {
+            if (allowedEmail && user.email !== allowedEmail.trim()) {
                 return false;
             }
             return true;
