@@ -38,7 +38,7 @@ def upgrade() -> None:
 
     # Recreate HNSW index for the new dimension
     op.execute(
-        "CREATE INDEX CONCURRENTLY ix_content_embedding_hnsw "
+        "CREATE INDEX ix_content_embedding_hnsw "
         "ON content USING hnsw (embedding vector_cosine_ops) "
         "WITH (m = 16, ef_construction = 64)"
     )
@@ -50,7 +50,7 @@ def downgrade() -> None:
     op.execute("UPDATE content SET embedding = NULL")
     op.execute("ALTER TABLE content ALTER COLUMN embedding TYPE vector(1536)")
     op.execute(
-        "CREATE INDEX CONCURRENTLY ix_content_embedding_hnsw "
+        "CREATE INDEX ix_content_embedding_hnsw "
         "ON content USING hnsw (embedding vector_cosine_ops) "
         "WITH (m = 16, ef_construction = 64)"
     )
