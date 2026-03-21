@@ -1,0 +1,140 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { RecommendItem } from "@/lib/api";
+
+interface ReadingPackProps {
+    items: RecommendItem[];
+    targetTime: number;
+    onBeginSession: (selectedItems: RecommendItem[]) => void;
+}
+
+function contentTypeLabel(type: string): string {
+    switch (type) {
+        case "twitter_thread": return "Twitter Thread";
+        case "substack": return "Substack";
+        case "article": return "Article";
+        case "pdf_report": return "PDF Report";
+        case "research_paper": return "Research Paper";
+        default: return type;
+    }
+}
+
+export default function ReadingPack({ items, targetTime, onBeginSession }: ReadingPackProps) {
+    // Determine initial selection: fill up to targetTime
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        const initialSelections = new Set<string>();
+        let currentSum = 0;
+        for (const item of items) {
+            if (currentSum + item.estimated_time <= targetTime) {
+                initialSelections.add(item.segment_id);
+                currentSum += item.estimated_time;
+            }
+        }
+        // Always select at least one if possible
+        if (initialSelections.size === 0 && items.length > 0) {
+            initialSelections.add(items[0].segment_id);
+        }
+        // Update ONLY if nothing is selected (prevents reset on re-renders)
+        setSelectedIds((prev) => prev.size > 0 ? prev : initialSelections);
+    }, [items, targetTime]);
+
+    if (items.length === 0) return null;
+
+    const selectedItems = items.filter(item => selectedIds.has(item.segment_id));
+    const selectedTime = selectedItems.reduce((acc, item) => acc + item.estimated_time, 0);
+    const progressPercent = Math.min(100, (selectedTime / targetTime) * 100);
+
+    const toggleSelection = (segmentId: string) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(segmentId)) {
+                next.delete(segmentId);
+            } else {
+                next.add(segmentId);
+            }
+            return next;
+        });
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="text-center space-y-2">
+                <h3 className="text-lg font-semibold">
+                    Curated For You
+                </h3>
+                <div className="flex items-center justify-between text-xs text-muted mb-1 px-1">
+                    <span>{Math.round(selectedTime)} min selected</span>
+                    <span>Target: {targetTime} min</span>
+                </div>
+                <div className="h-1.5 w-full bg-[#1f1b13] rounded-full overflow-hidden">
+                    <div 
+                        className={`h-full transition-all duration-300 ${selectedTime > targetTime ? 'bg-amber-500' : 'bg-accent'}`}
+                        style={{ width: `${progressPercent}%` }}
+                    ></div>
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                {items.map((item) => {
+                    const isSelected = selectedIds.has(item.segment_id);
+                    return (
+                        <div 
+                            key={item.segment_id} 
+                            onClick={() => toggleSelection(item.segment_id)}
+                            className={`card cursor-pointer group transition-all duration-300 ${isSelected ? 'border-accent/40 bg-accent/5' : 'border-accent/10 opacity-60 hover:opacity-100 hover:border-accent/20'}`}
+                        >
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1 pr-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span style={{ color: "var(--accent)" }} className="text-[11px] font-semibold uppercase tracking-widest">
+                                            {contentTypeLabel(item.content_type)}
+                                        </span>
+                                        <span className="text-xs text-muted">·</span>
+                                        <span className="text-[11px] uppercase tracking-wider text-muted">
+                                            {Math.round(item.estimated_time)} min
+                                        </span>
+                                        {item.is_continuation && (
+                                            <>
+                                                <span className="text-xs text-muted">·</span>
+                                                <span className="text-[11px] uppercase tracking-wider text-muted">
+                                                    Part {item.segment_index + 1}/{item.total_segments}
+                                                </span>
+                                            </>
+                                        )}
+                                    </div>
+                                    <h4
+                                        className={`text-[22px] leading-snug transition-colors ${isSelected ? 'text-slate-100' : 'text-muted group-hover:text-slate-200'}`}
+                                        style={{ fontFamily: "var(--font-serif)" }}
+                                    >
+                                        {item.title}
+                                    </h4>
+                                    {(item.author || item.source) && (
+                                        <p className="text-xs tracking-wide text-muted mt-2">
+                                            {item.author && <span>by {item.author}</span>}
+                                            {item.author && item.source && <span> · </span>}
+                                            {item.source && <span>{item.source}</span>}
+                                        </p>
+                                    )}
+                                </div>
+                                <div className={`text-2xl transition-all duration-300 flex items-center h-full pt-2 ${isSelected ? 'text-accent rotate-45' : 'text-accent/30 group-hover:text-accent/60'}`}>
+                                    +
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            <button 
+                className="btn-primary mt-4 w-full disabled:opacity-50 disabled:cursor-not-allowed" 
+                onClick={() => onBeginSession(selectedItems)}
+                disabled={selectedItems.length === 0}
+            >
+                Begin Session ({Math.round(selectedTime)} min)
+            </button>
+        </div>
+    );
+}

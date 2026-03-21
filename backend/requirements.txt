@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]
+alembic
+psycopg2-binary
+pgvector
+celery[redis]
+redis
+trafilatura
+newspaper3k
+pdfplumber
+openai
+python-dotenv
+httpx
+pydantic[email]

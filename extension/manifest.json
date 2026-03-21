@@ -1,0 +1,40 @@
+{
+    "manifest_version": 3,
+    "name": "TimeRead",
+    "version": "1.0.0",
+    "description": "Save articles and threads to TimeRead",
+    "permissions": [
+        "activeTab",
+        "storage",
+        "contextMenus",
+        "alarms"
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ],
+    "action": {
+        "default_popup": "popup/popup.html",
+        "default_icon": {
+            "48": "icons/icon48.png"
+        }
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "*://twitter.com/i/bookmarks*",
+                "*://x.com/i/bookmarks*"
+            ],
+            "js": [
+                "twitter_import.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "icons": {
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    }
+}
