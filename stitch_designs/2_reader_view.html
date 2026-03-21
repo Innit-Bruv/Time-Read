@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Lora:ital,wght@0,400;0,700;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#e8d5b0",
+              "background-light": "#f8f7f6",
+              "background-dark": "#1f1b13",
+            },
+            fontFamily: {
+              "display": ["Inter", "sans-serif"],
+              "serif": ["Lora", "serif"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .reading-container {
+            max-width: 680px;
+        }
+        .prose-text {
+            line-height: 1.7;
+            letter-spacing: 0.01em;
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #e8d5b033;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-primary/90 transition-colors duration-300">
+<div class="fixed top-0 left-0 w-full z-50">
+<div class="h-0.5 w-full bg-primary/10">
+<div class="h-full bg-primary shadow-[0_0_8px_rgba(232,213,176,0.6)]" style="width: 42%;"></div>
+</div>
+</div>
+<nav class="fixed top-0 left-0 w-full px-6 py-8 flex justify-between items-center z-40 bg-gradient-to-b from-background-dark to-transparent pointer-events-none">
+<div class="flex items-center gap-2 pointer-events-auto">
+<span class="material-symbols-outlined text-primary text-xl">menu_book</span>
+<span class="text-xs uppercase tracking-[0.2em] font-medium text-primary/60">TimeRead</span>
+</div>
+<div class="flex items-center gap-6 pointer-events-auto">
+<button class="text-primary/40 hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-xl">text_fields</span>
+</button>
+<button class="text-primary/40 hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-xl">bookmark</span>
+</button>
+</div>
+</nav>
+<main class="relative flex flex-col items-center px-6 pt-32 pb-48">
+<article class="reading-container w-full">
+<header class="mb-16">
+<div class="flex items-center gap-3 mb-6">
+<span class="text-[10px] uppercase tracking-[0.3em] font-bold text-primary py-1 px-2 border border-primary/20 rounded">Philosophy</span>
+<span class="text-xs text-primary/40">12 min read</span>
+</div>
+<h1 class="font-serif text-4xl md:text-5xl lg:text-6xl text-slate-100 leading-tight mb-8">
+                    The Architecture of Silence: Finding Focus in a Fragmented World
+                </h1>
+<div class="flex items-center gap-4 py-6 border-y border-primary/10">
+<div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
+<img class="object-cover w-full h-full opacity-80" data-alt="Portrait of an author in soft lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNTXhyjhM-TzA6WHhNTGAN-vWAgkNs5yLnMHcAdfBqNQMxhlLrNGbwLOGpxYHo6J98qQ75KF9XwIKcDRjO_10c15Xh9vX7P2ryShJdpI3_0Brfc_bjzhWX3Kck1BeZteDlBkbsz7xXF8O_go9Z5VUkbtXSXRIdEDS56KZLSZ6dNsvnWItIcXXXlXgQLjkbBYoxBLhusXzg2gmpCa6b2IRpecvFa65qUcz_4jgPKEy40AI_5ZKsIT3SQU5UhBa8rnava_Q8CJWfb_c"/>
+</div>
+<div>
+<p class="text-sm font-medium text-slate-100">Julian Thorne</p>
+<p class="text-xs text-primary/40">Senior Editor at The Continental</p>
+</div>
+</div>
+</header>
+<section class="font-serif text-xl md:text-2xl prose-text text-slate-100/90 space-y-10">
+<p>
+                    In the quiet hours of the morning, before the digital hum of the world begins its daily crescendo, there exists a rare form of clarity. This is the architecture of silence—a mental space we often neglect in our pursuit of constant connectivity.
+                </p>
+<p>
+                    The modern mind has been conditioned to crave the dopamine hit of the notification, the rapid-fire scroll of the feed, and the fragmented attention of the multi-tab browser. We have traded depth for breadth, and in the process, we are losing our capacity for sustained contemplation.
+                </p>
+<blockquote class="border-l-2 border-primary/30 pl-8 my-16 italic text-primary/80 text-2xl md:text-3xl leading-relaxed">
+                    "True wisdom is not the accumulation of information, but the cultivation of the space required to process it."
+                </blockquote>
+<p>
+                    To read deeply is to engage in a sacred act of resistance. When we commit ourselves to a single text, we are telling the world that our attention is not for sale. We are reclaiming the cognitive sovereignty that has been eroded by a decade of algorithmic manipulation. 
+                </p>
+<p>
+                    This digital sanctuary you find yourself in now is designed with a singular purpose: to disappear. By stripping away the visual noise—the sidebars, the ads, the social counters—we allow the words to breathe. The generous line height and the soft charcoal background are not merely aesthetic choices; they are ergonomic necessities for the modern reader.
+                </p>
+<div class="my-16">
+<img class="rounded-xl w-full h-auto opacity-70 grayscale hover:grayscale-0 transition-all duration-700" data-alt="Minimalist desk with a single candle and a book" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAU8ZsKmv7QAjlbV56YrDMykeBITlVTuQhP5-7zTm8mylAIy3DxabFL0rwl-IG0kYGBNcWg2abue2SqOjiq4UOpL5SG3_dkjoVhzVhVj58HWaRQGho4FxjUAAA612IfhXXgUmJPx3RX0nsa4IEF5CjlD98YhkM81RCyBhKoTmCkzdw7uv_GlYSROlUMeNj9KP765-uN-v2e-HVb3oV1feeAOmkoyOKnG-1bn25PyQVAwONQNJQrUpbxAmnenvKnUJpflLFncV_cQ0I"/>
+<p class="text-center text-xs text-primary/30 mt-4 italic tracking-wide">Plate 1.1: The Minimalist Altar of Deep Work</p>
+</div>
+<p>
+                    Consider the rhythm of your own breathing as you move through these sentences. Notice how the eye glides across the serif letterforms. There is a musicality to well-composed prose that only reveals itself when the reader is granted the luxury of focus.
+                </p>
+<p>
+                    As we move forward into an era increasingly dominated by artificial intelligence, the human capacity for nuanced, long-form thought will become the ultimate competitive advantage. Those who can think clearly will be the ones who lead.
+                </p>
+</section>
+<footer class="mt-32 pt-16 border-t border-primary/10">
+<div class="flex flex-col items-center gap-8">
+<div class="text-center">
+<p class="text-xs uppercase tracking-widest text-primary/40 mb-2">End of Chapter</p>
+<p class="text-primary font-serif italic text-lg">Next: The Geometry of Thinking</p>
+</div>
+<div class="flex gap-4 w-full justify-between items-center mt-8">
+<button class="px-8 py-3 text-xs uppercase tracking-widest text-primary/40 hover:text-primary border border-primary/10 hover:border-primary/40 rounded-full transition-all duration-300">
+                            End Session
+                        </button>
+<div class="flex gap-4">
+<button class="w-12 h-12 flex items-center justify-center rounded-full border border-primary/10 text-primary/40 hover:text-primary transition-all">
+<span class="material-symbols-outlined">share</span>
+</button>
+<button class="px-10 py-3 bg-primary/10 hover:bg-primary/20 text-primary text-xs uppercase tracking-widest rounded-full transition-all duration-300 border border-primary/20">
+                                Next Chapter
+                            </button>
+</div>
+</div>
+</div>
+</footer>
+</article>
+</main>
+<div class="fixed bottom-8 left-1/2 -translate-x-1/2 px-4 py-2 bg-background-dark/80 backdrop-blur-md border border-primary/10 rounded-full flex items-center gap-6 shadow-2xl opacity-0 hover:opacity-100 transition-opacity duration-500">
+<span class="text-[10px] text-primary/60 uppercase tracking-tighter">42% Read</span>
+<div class="h-4 w-px bg-primary/10"></div>
+<span class="text-[10px] text-primary/60 uppercase tracking-tighter">7 min left</span>
+</div>
+</body></html>

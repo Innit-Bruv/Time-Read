@@ -2,7 +2,7 @@
 import uuid
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, asc
+from sqlalchemy import func, desc, asc, case
 
 from auth import verify_api_key
 from db.database import get_db
@@ -42,8 +42,7 @@ def get_archive(
     if sort == "oldest":
         query = query.order_by(asc(Content.created_at))
     elif sort == "unread":
-        # Show items with least completion first
-        query = query.order_by(desc(Content.created_at))  # simplified — unread first
+        query = query.order_by(asc(Content.created_at))  # oldest-first = most likely unread
     else:  # recent
         query = query.order_by(desc(Content.created_at))
 
@@ -51,10 +50,36 @@ def get_archive(
     offset = (page - 1) * limit
     contents = query.offset(offset).limit(limit).all()
 
-    # Calculate completion percent for each item
+    if not contents:
+        return ArchiveResponse(items=[], total=total, page=page, limit=limit)
+
+    content_ids = [c.id for c in contents]
+
+    # Single query: total segment count per content item
+    segment_counts = dict(
+        db.query(Segment.content_id, func.count(Segment.id))
+        .filter(Segment.content_id.in_(content_ids))
+        .group_by(Segment.content_id)
+        .all()
+    )
+
+    # Single query: completed segment count per content item
+    completed_counts = dict(
+        db.query(Segment.content_id, func.count(func.distinct(ReadingSession.segment_id)))
+        .join(ReadingSession, ReadingSession.segment_id == Segment.id)
+        .filter(Segment.content_id.in_(content_ids))
+        .filter(ReadingSession.completed == True)
+        .group_by(Segment.content_id)
+        .all()
+    )
+
     items = []
     for content in contents:
-        completion = _calculate_completion(db, content.id)
+        total_segs = segment_counts.get(content.id, 0)
+        completed_segs = completed_counts.get(content.id, 0)
+        completion = (
+            round((completed_segs / total_segs) * 100, 1) if total_segs > 0 else 0.0
+        )
         items.append(
             ArchiveItem(
                 content_id=content.id,
@@ -74,25 +99,3 @@ def get_archive(
         page=page,
         limit=limit,
     )
-
-
-def _calculate_completion(db: Session, content_id: uuid.UUID) -> float:
-    """Calculate reading completion percentage for a content item."""
-    total_segments = (
-        db.query(func.count(Segment.id))
-        .filter(Segment.content_id == content_id)
-        .scalar() or 0
-    )
-
-    if total_segments == 0:
-        return 0
-
-    completed_segments = (
-        db.query(func.count(func.distinct(ReadingSession.segment_id)))
-        .join(Segment, ReadingSession.segment_id == Segment.id)
-        .filter(Segment.content_id == content_id)
-        .filter(ReadingSession.completed == True)
-        .scalar() or 0
-    )
-
-    return round((completed_segments / total_segments) * 100, 1)

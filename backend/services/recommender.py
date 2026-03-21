@@ -10,7 +10,7 @@ import uuid
 import logging
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text, and_
+from sqlalchemy import func, and_
 
 from models.content import Content, Segment, ReadingSession, UserStats
 from services.embedder import generate_embedding
@@ -25,7 +25,10 @@ def generate_pack(
     content_type: Optional[str] = None,
 ) -> dict:
     """Generate a reading pack that fits within time_budget minutes.
-    
+
+    Computes completed segment IDs once upfront (instead of once per tier)
+    to avoid repeated DB round-trips.
+
     Returns:
         dict with session_id, total_estimated_time, items[]
     """
@@ -36,8 +39,15 @@ def generate_pack(
     user_stats = db.query(UserStats).filter(UserStats.id == 1).first()
     reading_speed = int(user_stats.reading_speed) if user_stats else 200
 
+    # Compute completed segment IDs once — reused by all four tiers.
+    completed_ids = _get_completed_segment_ids(db)
+
+    # Build a lazily-populated segment count cache so _segment_to_item
+    # never fires a per-item COUNT query.
+    seg_count_cache: dict = {}
+
     # 1. Unfinished segments (highest priority)
-    unfinished = _get_unfinished_segments(db)
+    unfinished = _get_unfinished_segments(db, completed_ids)
     for seg_info in unfinished:
         if remaining_time <= 0:
             break
@@ -48,7 +58,9 @@ def generate_pack(
     # 2. Topic-similar segments (vector similarity)
     if remaining_time > 0 and topic:
         used_segment_ids = {item["segment_id"] for item in items}
-        similar = _get_topic_similar_segments(db, topic, content_type, used_segment_ids)
+        similar = _get_topic_similar_segments(
+            db, topic, content_type, used_segment_ids, completed_ids, seg_count_cache
+        )
         for seg_info in similar:
             if remaining_time <= 0:
                 break
@@ -59,7 +71,9 @@ def generate_pack(
     # 3. Content type filtered (no topic)
     if remaining_time > 0 and content_type and not topic:
         used_segment_ids = {item["segment_id"] for item in items}
-        typed = _get_typed_segments(db, content_type, used_segment_ids)
+        typed = _get_typed_segments(
+            db, content_type, used_segment_ids, completed_ids, seg_count_cache
+        )
         for seg_info in typed:
             if remaining_time <= 0:
                 break
@@ -70,7 +84,9 @@ def generate_pack(
     # 4. Oldest unread (fill remaining)
     if remaining_time > 0:
         used_segment_ids = {item["segment_id"] for item in items}
-        oldest = _get_oldest_unread_segments(db, used_segment_ids)
+        oldest = _get_oldest_unread_segments(
+            db, used_segment_ids, completed_ids, seg_count_cache
+        )
         for seg_info in oldest:
             if remaining_time <= 0:
                 break
@@ -87,20 +103,33 @@ def generate_pack(
     }
 
 
-def _get_unfinished_segments(db: Session) -> list[dict]:
-    """Get segments that have been started but not completed."""
-    # Find segments with at least one incomplete session
-    subquery = (
-        db.query(ReadingSession.segment_id)
-        .filter(ReadingSession.completed == False)
-        .distinct()
-        .subquery()
-    )
-
-    # Exclude completed segments
-    completed_subquery = (
+def _get_completed_segment_ids(db: Session) -> set:
+    """Get set of segment IDs that have been completed. Called once per pack."""
+    completed = (
         db.query(ReadingSession.segment_id)
         .filter(ReadingSession.completed == True)
+        .distinct()
+        .all()
+    )
+    return {row[0] for row in completed}
+
+
+def _get_segment_count(db: Session, content_id, cache: dict) -> int:
+    """Return total segment count for a content item, using cache to avoid N+1."""
+    if content_id not in cache:
+        cache[content_id] = (
+            db.query(func.count(Segment.id))
+            .filter(Segment.content_id == content_id)
+            .scalar() or 0
+        )
+    return cache[content_id]
+
+
+def _get_unfinished_segments(db: Session, completed_ids: set) -> list[dict]:
+    """Get segments that have been started but not completed."""
+    started_subquery = (
+        db.query(ReadingSession.segment_id)
+        .filter(ReadingSession.completed == False)
         .distinct()
         .subquery()
     )
@@ -108,19 +137,35 @@ def _get_unfinished_segments(db: Session) -> list[dict]:
     segments = (
         db.query(Segment, Content)
         .join(Content, Segment.content_id == Content.id)
-        .filter(Segment.id.in_(subquery))
-        .filter(~Segment.id.in_(completed_subquery))
+        .filter(Segment.id.in_(started_subquery))
+        .filter(~Segment.id.in_(completed_ids))
         .filter(Content.status == "ready")
         .order_by(Content.created_at.asc())
         .all()
     )
 
-    return [_segment_to_item(seg, content, db) for seg, content in segments]
+    # Bulk-precompute segment counts for all content in this result.
+    content_ids = list({content.id for _, content in segments})
+    cache: dict = {}
+    if content_ids:
+        rows = (
+            db.query(Segment.content_id, func.count(Segment.id))
+            .filter(Segment.content_id.in_(content_ids))
+            .group_by(Segment.content_id)
+            .all()
+        )
+        cache = dict(rows)
+
+    return [_segment_to_item(seg, content, cache) for seg, content in segments]
 
 
 def _get_topic_similar_segments(
-    db: Session, topic: str, content_type: Optional[str],
-    exclude_ids: set
+    db: Session,
+    topic: str,
+    content_type: Optional[str],
+    exclude_ids: set,
+    completed_ids: set,
+    seg_count_cache: dict,
 ) -> list[dict]:
     """Get segments from content similar to the topic via vector similarity."""
     try:
@@ -129,11 +174,8 @@ def _get_topic_similar_segments(
         logger.warning(f"Could not generate topic embedding: {e}")
         return []
 
-    # Get completed segment IDs to exclude
-    completed_ids = _get_completed_segment_ids(db)
     exclude_all = exclude_ids | completed_ids
 
-    # Vector similarity query
     query = (
         db.query(Content)
         .filter(Content.status == "ready")
@@ -142,9 +184,7 @@ def _get_topic_similar_segments(
     if content_type:
         query = query.filter(Content.content_type == content_type)
 
-    # Order by cosine similarity
-    query = query.order_by(Content.embedding.cosine_distance(topic_embedding))
-    query = query.limit(20)
+    query = query.order_by(Content.embedding.cosine_distance(topic_embedding)).limit(20)
 
     results = []
     for content in query.all():
@@ -154,18 +194,23 @@ def _get_topic_similar_segments(
             .order_by(Segment.segment_index)
             .all()
         )
+        # Populate cache for this content
+        seg_count_cache[content.id] = len(segments)
         for seg in segments:
             if seg.id not in exclude_all:
-                results.append(_segment_to_item(seg, content, db))
+                results.append(_segment_to_item(seg, content, seg_count_cache))
 
     return results
 
 
 def _get_typed_segments(
-    db: Session, content_type: str, exclude_ids: set
+    db: Session,
+    content_type: str,
+    exclude_ids: set,
+    completed_ids: set,
+    seg_count_cache: dict,
 ) -> list[dict]:
     """Get unread segments of a specific content type."""
-    completed_ids = _get_completed_segment_ids(db)
     exclude_all = exclude_ids | completed_ids
 
     segments = (
@@ -177,16 +222,22 @@ def _get_typed_segments(
         .all()
     )
 
+    _bulk_populate_cache(db, segments, seg_count_cache)
+
     return [
-        _segment_to_item(seg, content, db)
+        _segment_to_item(seg, content, seg_count_cache)
         for seg, content in segments
         if seg.id not in exclude_all
     ]
 
 
-def _get_oldest_unread_segments(db: Session, exclude_ids: set) -> list[dict]:
+def _get_oldest_unread_segments(
+    db: Session,
+    exclude_ids: set,
+    completed_ids: set,
+    seg_count_cache: dict,
+) -> list[dict]:
     """Get oldest unread segments."""
-    completed_ids = _get_completed_segment_ids(db)
     exclude_all = exclude_ids | completed_ids
 
     segments = (
@@ -197,35 +248,34 @@ def _get_oldest_unread_segments(db: Session, exclude_ids: set) -> list[dict]:
         .all()
     )
 
+    _bulk_populate_cache(db, segments, seg_count_cache)
+
     return [
-        _segment_to_item(seg, content, db)
+        _segment_to_item(seg, content, seg_count_cache)
         for seg, content in segments
         if seg.id not in exclude_all
     ]
 
 
-def _get_completed_segment_ids(db: Session) -> set:
-    """Get set of segment IDs that have been completed."""
-    completed = (
-        db.query(ReadingSession.segment_id)
-        .filter(ReadingSession.completed == True)
-        .distinct()
+def _bulk_populate_cache(db: Session, segments: list, cache: dict) -> None:
+    """Precompute segment counts for all content IDs not already in cache."""
+    missing_ids = list(
+        {content.id for _, content in segments if content.id not in cache}
+    )
+    if not missing_ids:
+        return
+    rows = (
+        db.query(Segment.content_id, func.count(Segment.id))
+        .filter(Segment.content_id.in_(missing_ids))
+        .group_by(Segment.content_id)
         .all()
     )
-    return {row[0] for row in completed}
+    cache.update(dict(rows))
 
 
-def _segment_to_item(segment: Segment, content: Content, db: Session) -> dict:
+def _segment_to_item(segment: Segment, content: Content, seg_count_cache: dict) -> dict:
     """Convert a Segment + Content to a recommendation item dict."""
-    total_segments = (
-        db.query(func.count(Segment.id))
-        .filter(Segment.content_id == content.id)
-        .scalar()
-    )
-
-    # Check if this is a continuation (segment_index > 0)
-    is_continuation = segment.segment_index > 0
-
+    total_segments = seg_count_cache.get(content.id, 0)
     return {
         "content_id": str(content.id),
         "segment_id": str(segment.id),
@@ -236,5 +286,5 @@ def _segment_to_item(segment: Segment, content: Content, db: Session) -> dict:
         "estimated_time": segment.estimated_time,
         "segment_index": segment.segment_index,
         "total_segments": total_segments,
-        "is_continuation": is_continuation,
+        "is_continuation": segment.segment_index > 0,
     }

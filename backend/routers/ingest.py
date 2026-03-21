@@ -62,12 +62,17 @@ def ingest_content(req: IngestRequest, db: Session = Depends(get_db)):
         from tasks.process_content import process_content_task
         process_content_task.delay(str(content.id))
     except Exception:
-        # Celery/Redis not available — process synchronously as fallback
+        # Celery/Redis not available — run pipeline synchronously as fallback.
+        # Calls run_pipeline directly (not the Celery task wrapper) to avoid
+        # the self.retry() Celery context requirement.
         try:
-            from tasks.process_content import process_content_task
-            process_content_task(str(content.id))
-        except Exception:
-            pass  # Will remain in 'pending' status
+            from tasks.process_content import run_pipeline
+            run_pipeline(str(content.id))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                f"Synchronous fallback pipeline failed for {content.id}: {e}"
+            )
 
     return IngestResponse(
         content_id=content.id,

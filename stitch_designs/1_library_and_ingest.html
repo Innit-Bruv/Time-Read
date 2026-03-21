@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#e8d5b0",
+                        "background-light": "#f8f7f6",
+                        "background-dark": "#0f0f0f",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<title>TimeRead | My Archive</title>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
+<div class="flex h-screen overflow-hidden">
+<!-- Sidebar -->
+<aside class="w-64 border-r border-primary/10 bg-background-light dark:bg-background-dark flex flex-col">
+<div class="p-6 flex items-center gap-3">
+<div class="size-8 bg-primary rounded-lg flex items-center justify-center text-background-dark">
+<span class="material-symbols-outlined font-bold">menu_book</span>
+</div>
+<h2 class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">TimeRead</h2>
+</div>
+<nav class="flex-1 px-4 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-primary/10 transition-colors text-slate-600 dark:text-slate-400 hover:text-primary" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-sm font-medium">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-primary/10 transition-colors text-slate-600 dark:text-slate-400 hover:text-primary" href="#">
+<span class="material-symbols-outlined">auto_stories</span>
+<span class="text-sm font-medium">Reading List</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-primary/20 text-primary" href="#">
+<span class="material-symbols-outlined">archive</span>
+<span class="text-sm font-medium">Archive</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-primary/10 transition-colors text-slate-600 dark:text-slate-400 hover:text-primary" href="#">
+<span class="material-symbols-outlined">stylus_note</span>
+<span class="text-sm font-medium">Highlights</span>
+</a>
+<div class="pt-4 pb-2">
+<p class="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Collections</p>
+</div>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-primary/10 transition-colors text-slate-600 dark:text-slate-400 hover:text-primary" href="#">
+<span class="material-symbols-outlined text-sm">folder</span>
+<span class="text-sm font-medium">Deep Learning</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-primary/10 transition-colors text-slate-600 dark:text-slate-400 hover:text-primary" href="#">
+<span class="material-symbols-outlined text-sm">folder</span>
+<span class="text-sm font-medium">Philosophy</span>
+</a>
+</nav>
+<div class="p-4 border-t border-primary/10">
+<div class="flex items-center gap-3 p-2 rounded-lg hover:bg-primary/5 cursor-pointer">
+<div class="size-8 rounded-full bg-primary/30" data-alt="User profile avatar placeholder"></div>
+<div class="flex-1 min-w-0">
+<p class="text-sm font-medium truncate">Julian Vane</p>
+<p class="text-xs text-slate-500 truncate">Pro Member</p>
+</div>
+<span class="material-symbols-outlined text-slate-500">settings</span>
+</div>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 overflow-y-auto bg-background-light dark:bg-background-dark scroll-smooth">
+<!-- Header -->
+<header class="sticky top-0 z-10 flex items-center justify-between px-8 py-4 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10">
+<div class="flex items-center gap-4 flex-1 max-w-xl">
+<div class="relative w-full">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800/50 border-none rounded-lg focus:ring-1 focus:ring-primary text-sm transition-all" placeholder="Search your knowledge base..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-slate-500 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="flex items-center gap-2 bg-primary text-background-dark px-4 py-2 rounded-lg font-bold text-sm hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-lg">add</span>
+                        New Entry
+                    </button>
+</div>
+</header>
+<div class="max-w-6xl mx-auto p-8">
+<!-- Page Title -->
+<div class="mb-10">
+<h1 class="text-4xl font-black tracking-tight text-slate-900 dark:text-slate-100 mb-2">My Archive</h1>
+<p class="text-slate-500 dark:text-slate-400">Manage and explore your curated digital library of knowledge.</p>
+</div>
+<!-- Upload & Ingest Area -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-12">
+<div class="lg:col-span-2 group flex flex-col items-center justify-center border-2 border-dashed border-primary/20 hover:border-primary/40 rounded-xl p-8 bg-primary/5 transition-all cursor-pointer">
+<div class="size-12 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-4 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-3xl">upload_file</span>
+</div>
+<h3 class="text-lg font-bold mb-1">Upload PDF Documents</h3>
+<p class="text-sm text-slate-500 mb-6 text-center">Drag and drop your research papers or books here to begin ingestion</p>
+<button class="bg-primary/20 text-primary border border-primary/30 px-6 py-2 rounded-lg text-sm font-bold hover:bg-primary/30 transition-colors">
+                            Browse Local Files
+                        </button>
+</div>
+<div class="flex flex-col gap-6 p-8 border border-primary/10 rounded-xl bg-slate-50 dark:bg-slate-900/40">
+<div class="space-y-4">
+<div class="flex items-center gap-3 text-primary">
+<span class="material-symbols-outlined">link</span>
+<h3 class="font-bold">Paste URL</h3>
+</div>
+<p class="text-sm text-slate-500">Save articles, newsletters, or blog posts instantly.</p>
+<input class="w-full bg-background-light dark:bg-background-dark border border-primary/10 rounded-lg px-4 py-3 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none" placeholder="https://example.com/article" type="text"/>
+<button class="w-full bg-slate-800 dark:bg-primary text-white dark:text-background-dark py-3 rounded-lg font-bold text-sm hover:opacity-90 transition-opacity">
+                                Ingest Content
+                            </button>
+</div>
+<div class="pt-4 border-t border-primary/10">
+<div class="flex items-center justify-between text-xs text-slate-500">
+<span>Storage Used</span>
+<span>4.2 GB / 10 GB</span>
+</div>
+<div class="mt-2 h-1.5 w-full bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[42%]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Filter Bar -->
+<div class="flex flex-wrap items-center justify-between gap-4 mb-8">
+<div class="flex items-center gap-2">
+<button class="px-4 py-2 rounded-full bg-primary text-background-dark text-xs font-bold uppercase tracking-wider">All</button>
+<button class="px-4 py-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider hover:bg-primary/10">PDFs</button>
+<button class="px-4 py-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider hover:bg-primary/10">Articles</button>
+<button class="px-4 py-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider hover:bg-primary/10">Unread</button>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-xs text-slate-500">Sort by:</span>
+<select class="bg-transparent border-none text-sm font-medium text-slate-900 dark:text-slate-100 focus:ring-0 cursor-pointer">
+<option>Recently Added</option>
+<option>Alphabetical</option>
+<option>Reading Time</option>
+</select>
+<div class="flex items-center border border-primary/10 rounded-lg overflow-hidden">
+<button class="p-2 bg-primary/20 text-primary">
+<span class="material-symbols-outlined text-xl">grid_view</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-primary">
+<span class="material-symbols-outlined text-xl">view_list</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Content Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+<!-- Card 1 -->
+<div class="group flex flex-col bg-slate-50 dark:bg-slate-900/20 border border-primary/5 rounded-xl overflow-hidden hover:border-primary/30 transition-all">
+<div class="relative aspect-[4/3] overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent z-0"></div>
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="Abstract AI neural network visualization" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBikGtlXO7kW3b3gPju8m2iZXEs9ooqmLKBp83ijIjrR2a6DO4qHhydfoZ1KzQOr1PRcyxeuZ4RZmpBDTK8XKqR6ICNHZ1MDGuzF_nPKzsY1nUECEsvyS2-Jyg8y5mG_RLzLAncfp1OdEL439vd1V0F2BzLlXBq42hCOKdCgH89EJ2hAYGX59PH4q9bD75EoqgXoaG4SIe1GZf9XqhNCFx9o0OKe4d5Du-XSySKx02UpkBsmZAGDBRigsLMC7180dYPOrrzjyf-5u0"/>
+<div class="absolute top-3 left-3 px-2 py-1 bg-background-dark/80 backdrop-blur-md rounded text-[10px] font-bold text-primary uppercase tracking-widest border border-primary/20">Artificial Intelligence</div>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-primary text-sm">article</span>
+<span class="text-xs text-slate-500 uppercase font-semibold">The Verge</span>
+</div>
+<h4 class="text-lg font-bold leading-tight mb-3 group-hover:text-primary transition-colors">The Future of Large Language Models: A 2024 Perspective</h4>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex items-center gap-2 text-slate-500">
+<span class="material-symbols-outlined text-sm">schedule</span>
+<span class="text-xs font-medium">12 min read</span>
+</div>
+<button class="size-8 rounded-full border border-primary/10 flex items-center justify-center hover:bg-primary/20 text-slate-400 hover:text-primary transition-all">
+<span class="material-symbols-outlined text-lg">more_horiz</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="group flex flex-col bg-slate-50 dark:bg-slate-900/20 border border-primary/5 rounded-xl overflow-hidden hover:border-primary/30 transition-all">
+<div class="relative aspect-[4/3] overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-br from-blue-900/20 to-transparent z-0"></div>
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="High resolution earth from space satellite view" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCbOHCjl7qtPw_-TziYGCxvqHtmHZdNpIGk2aHPaaATWyJrojyXSi4yf9zI4lib0892DkdBBqihWo5NEBpC8Hbrjr6unH9XwsSvk7S4QCjm1Q__MBe1t14J65V_UwTJv0Of2ZdkAfcQ6BD2c6PS2VvLKQj-rTFsy9Oz9M9vgZnW6ejHRMUDzxd56P8kJ-tT_Nz6Ms74bnmElOpTa7_vaxe5Se4lUCIvQjp_eO1qGCVDwikxin2UGvK0qyeMoj3cw5CLw9Uahsjwti8"/>
+<div class="absolute top-3 left-3 px-2 py-1 bg-background-dark/80 backdrop-blur-md rounded text-[10px] font-bold text-primary uppercase tracking-widest border border-primary/20">Scientific Paper</div>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-primary text-sm">picture_as_pdf</span>
+<span class="text-xs text-slate-500 uppercase font-semibold">PDF • 4.2 MB</span>
+</div>
+<h4 class="text-lg font-bold leading-tight mb-3 group-hover:text-primary transition-colors">Quantum Supremacy and the Road to Commercialization</h4>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex items-center gap-2 text-slate-500">
+<span class="material-symbols-outlined text-sm">schedule</span>
+<span class="text-xs font-medium">45 min read</span>
+</div>
+<button class="size-8 rounded-full border border-primary/10 flex items-center justify-center hover:bg-primary/20 text-slate-400 hover:text-primary transition-all">
+<span class="material-symbols-outlined text-lg">more_horiz</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="group flex flex-col bg-slate-50 dark:bg-slate-900/20 border border-primary/5 rounded-xl overflow-hidden hover:border-primary/30 transition-all">
+<div class="relative aspect-[4/3] overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-br from-amber-900/20 to-transparent z-0"></div>
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="Modern workspace with books and coffee" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC40DgAx2JeNWLoQkYzxUEDbxsyiPsX4zCnGNcXJtPKdY8kP0g6Xqja-YAwhRvwD6FmPuBBB_UAc97_jxDo1z3CdNM_xQNKxDrqAXIxQ1qmH5N615hwnBpCA5mCugCC73Sar6GG3w97t3wXr2dAJ7NwRQo_o13VNJh3uTBKWV21_8aX7a6E9y4GCbtPkfIAbQZvmcfz8sqVFHrtjCXgxStZLQTBzp0nqv0zt-r_6lyGRSd2cV_n2b3MiBZmW4VOlESV91JIeVPX5GM"/>
+<div class="absolute top-3 left-3 px-2 py-1 bg-background-dark/80 backdrop-blur-md rounded text-[10px] font-bold text-primary uppercase tracking-widest border border-primary/20">Philosophy</div>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-primary text-sm">newspaper</span>
+<span class="text-xs text-slate-500 uppercase font-semibold">New York Times</span>
+</div>
+<h4 class="text-lg font-bold leading-tight mb-3 group-hover:text-primary transition-colors">Digital Stoicism: Finding Peace in the Age of Noise</h4>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex items-center gap-2 text-slate-500">
+<span class="material-symbols-outlined text-sm">schedule</span>
+<span class="text-xs font-medium">8 min read</span>
+</div>
+<button class="size-8 rounded-full border border-primary/10 flex items-center justify-center hover:bg-primary/20 text-slate-400 hover:text-primary transition-all">
+<span class="material-symbols-outlined text-lg">more_horiz</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="group flex flex-col bg-slate-50 dark:bg-slate-900/20 border border-primary/5 rounded-xl overflow-hidden hover:border-primary/30 transition-all">
+<div class="relative aspect-[4/3] overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-br from-emerald-900/20 to-transparent z-0"></div>
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="Stock market growth charts and data" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCukm8WgRQRZAWA6fUYNbMy-722H79rCI-_l55YBR3MbUjzfRNzTuNxn1UEHPpt1hCyNwaOO2yHFR8aiQi9tb2TdwzBgLtozi1uvNTCW5MrWruZiVufaS9vv4zqVMYD8nQ3xTMCWFCP0OTTMpeKr9lCXjfSi1MbDgITrlmytR5dxoWOWtoDAlC2IL8dYB9A2F1XRWbg-M9NRcBzfvsd2p_z2oQObQMfy6OLGAgLWVDtQPThHEX45u9qLZU5NFgoLKr3Md7Hqnmt5pM"/>
+<div class="absolute top-3 left-3 px-2 py-1 bg-background-dark/80 backdrop-blur-md rounded text-[10px] font-bold text-primary uppercase tracking-widest border border-primary/20">Economy</div>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-primary text-sm">alternate_email</span>
+<span class="text-xs text-slate-500 uppercase font-semibold">Substack</span>
+</div>
+<h4 class="text-lg font-bold leading-tight mb-3 group-hover:text-primary transition-colors">The Decentralized Finance Handbook for 2024</h4>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex items-center gap-2 text-slate-500">
+<span class="material-symbols-outlined text-sm">schedule</span>
+<span class="text-xs font-medium">22 min read</span>
+</div>
+<button class="size-8 rounded-full border border-primary/10 flex items-center justify-center hover:bg-primary/20 text-slate-400 hover:text-primary transition-all">
+<span class="material-symbols-outlined text-lg">more_horiz</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Card 5 -->
+<div class="group flex flex-col bg-slate-50 dark:bg-slate-900/20 border border-primary/5 rounded-xl overflow-hidden hover:border-primary/30 transition-all opacity-80">
+<div class="relative aspect-[4/3] overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-br from-purple-900/20 to-transparent z-0"></div>
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="A vintage open book with glowing pages" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAOuWUkKad9aQmsOmZHOOefd1-ZWJeHe8lqn3t8XSc0cU-WUF00219b8n6dlbcjrvxF4ddTIvrMhkWZVH5XbptJPcnN6xfM7SBX8jG0CoQoMuVQhCgGKQHkdwQ-ROn4A9TT997wddF2GMALJGeQOux0KpmMBD7Hke2bf9uUvEilwo57yVIVnldTBadxsqLzXkBbTNVBF1XdJmSQqSQe6LwQK-D3fhZfOoP8dNiy1hPmzvUQ2vrphynky9vmQhHZONgVHdlhF_AB9bc"/>
+<div class="absolute top-3 left-3 px-2 py-1 bg-background-dark/80 backdrop-blur-md rounded text-[10px] font-bold text-primary uppercase tracking-widest border border-primary/20">Literature</div>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-primary text-sm">menu_book</span>
+<span class="text-xs text-slate-500 uppercase font-semibold">eBook • EPUB</span>
+</div>
+<h4 class="text-lg font-bold leading-tight mb-3 group-hover:text-primary transition-colors">Great Gatsby: The Deluxe Annotated Edition</h4>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex items-center gap-2 text-slate-500">
+<span class="material-symbols-outlined text-sm">schedule</span>
+<span class="text-xs font-medium">4h 15m read</span>
+</div>
+<button class="size-8 rounded-full border border-primary/10 flex items-center justify-center hover:bg-primary/20 text-slate-400 hover:text-primary transition-all">
+<span class="material-symbols-outlined text-lg">more_horiz</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Empty State Filler -->
+<div class="mt-12 flex items-center justify-center py-12 border-t border-primary/10">
+<button class="flex items-center gap-2 text-primary font-medium hover:underline">
+<span>Load more content from archive</span>
+<span class="material-symbols-outlined text-sm">keyboard_arrow_down</span>
+</button>
+</div>
+</div>
+</main>
+</div>
+</body></html>

@@ -114,6 +114,7 @@ def _extract_newspaper(url: str) -> Optional[dict]:
 
 def _extract_pdf(url: str) -> dict:
     """Extract text from PDF URL using pdfplumber."""
+    import os
     import tempfile
     import pdfplumber
 
@@ -125,16 +126,25 @@ def _extract_pdf(url: str) -> dict:
         if len(response.content) > 20 * 1024 * 1024:
             raise ExtractionError("pdf_too_large: PDF exceeds 20MB limit")
 
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
-            f.write(response.content)
-            f.flush()
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+                f.write(response.content)
+                f.flush()
+                tmp_path = f.name
 
-            with pdfplumber.open(f.name) as pdf:
+            with pdfplumber.open(tmp_path) as pdf:
                 texts = []
                 for page in pdf.pages:
                     text = page.extract_text()
                     if text:
                         texts.append(text)
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
         full_text = "\n\n".join(texts)
         words = full_text.split()

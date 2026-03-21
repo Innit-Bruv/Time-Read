@@ -1,5 +1,7 @@
 """FastAPI main application — TimeRead backend."""
 import os
+import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -8,10 +10,43 @@ load_dotenv()
 
 from routers import ingest, recommend, archive, session  # noqa
 
+logger = logging.getLogger(__name__)
+
+DEFAULT_SECRET = "dev-secret-change-me"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Validate critical env vars at startup — fail fast in production."""
+    env = os.getenv("ENV", "development")
+    secret = os.getenv("INTERNAL_API_SECRET", DEFAULT_SECRET)
+
+    if secret == DEFAULT_SECRET and env != "development":
+        raise RuntimeError(
+            "INTERNAL_API_SECRET is set to the default dev value in a non-development "
+            "environment. Set a strong secret in your environment variables."
+        )
+
+    if not os.getenv("OPENAI_API_KEY"):
+        logger.warning(
+            "OPENAI_API_KEY is not set — embedding and LLM features will fail. "
+            "Set OPENAI_API_KEY in your environment."
+        )
+
+    if secret == DEFAULT_SECRET:
+        logger.warning(
+            "INTERNAL_API_SECRET is using the default dev value. "
+            "Set a strong secret before deploying to production."
+        )
+
+    yield
+
+
 app = FastAPI(
     title="TimeRead API",
     version="1.0.0",
     description="Personal time-aware reading system backend",
+    lifespan=lifespan,
 )
 
 # CORS

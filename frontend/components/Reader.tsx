@@ -16,6 +16,7 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
     const [wordsRead, setWordsRead] = useState(0);
     const [showEndCard, setShowEndCard] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const rafRef = useRef<number | null>(null);
 
     const currentItem = items[currentIndex];
     const totalTime = items.reduce((sum, i) => sum + i.estimated_time, 0);
@@ -48,24 +49,37 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
         loadSegment();
     }, [loadSegment]);
 
-    // Track reading on scroll
+    // Track reading on scroll — throttled via requestAnimationFrame to avoid
+    // 30-60 state updates per second on mobile Safari.
     useEffect(() => {
         const handleScroll = () => {
             if (!scrollRef.current || !segment) return;
-            const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-            const pct = scrollTop / (scrollHeight - clientHeight);
-            const newWordsRead = Math.floor(pct * segment.word_count);
-            setWordsRead(newWordsRead);
+            if (rafRef.current) return; // already scheduled, skip
 
-            // Show end card when user reaches ~90% of the article
-            if (pct > 0.88 && !showEndCard) {
-                setShowEndCard(true);
-            }
+            rafRef.current = requestAnimationFrame(() => {
+                rafRef.current = null;
+                if (!scrollRef.current) return;
+                const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+                const pct = scrollTop / (scrollHeight - clientHeight);
+                const newWordsRead = Math.floor(pct * segment.word_count);
+                setWordsRead(newWordsRead);
+
+                // Show end card when user reaches ~90% of the article
+                if (pct > 0.88 && !showEndCard) {
+                    setShowEndCard(true);
+                }
+            });
         };
 
         const el = scrollRef.current;
         el?.addEventListener("scroll", handleScroll, { passive: true });
-        return () => el?.removeEventListener("scroll", handleScroll);
+        return () => {
+            el?.removeEventListener("scroll", handleScroll);
+            if (rafRef.current) {
+                cancelAnimationFrame(rafRef.current);
+                rafRef.current = null;
+            }
+        };
     }, [segment, showEndCard]);
 
     const handleTrack = async (completed: boolean) => {

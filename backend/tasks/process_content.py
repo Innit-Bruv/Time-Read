@@ -27,12 +27,14 @@ celery_app.conf.update(
 )
 
 
-@celery_app.task(bind=True, max_retries=3, default_retry_delay=10)
-def process_content_task(self, content_id: str):
-    """Main async task: fetch → extract → segment → embed → store.
-    
-    Called after POST /ingest creates a content record.
-    Retries up to 3× with exponential backoff on failure.
+def run_pipeline(content_id: str) -> None:
+    """Execute the full ingestion pipeline synchronously.
+
+    fetch_and_extract → segment → embed → store
+
+    Called directly by the Celery task body and by the synchronous fallback
+    in the ingest router when Celery/Redis is unavailable. Does not depend on
+    any Celery runtime context (no self.retry, no task binding).
     """
     from db.database import SessionLocal
     from models.content import Content, Segment, UserStats
@@ -105,18 +107,46 @@ def process_content_task(self, content_id: str):
         # Mark as ready
         content.status = "ready"
         db.commit()
-        logger.info(f"Content {content_id} processed: {content.word_count} words, {len(segments_data)} segments")
+        logger.info(
+            f"Content {content_id} processed: {content.word_count} words, "
+            f"{len(segments_data)} segments"
+        )
 
-    except Exception as e:
-        logger.exception(f"Processing failed for {content_id}")
-        try:
-            content.status = "failed"
-            content.error_message = f"processing_error: {str(e)}"
-            db.commit()
-        except Exception:
-            pass
-
-        # Retry with exponential backoff
-        raise self.retry(exc=e, countdown=10 * (2 ** self.request.retries))
+    except Exception:
+        logger.exception(f"Pipeline failed for {content_id}")
+        raise
     finally:
         db.close()
+
+
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=10)
+def process_content_task(self, content_id: str):
+    """Celery task wrapper around run_pipeline. Retries up to 3× with
+    exponential backoff. Only marks content as 'failed' on the final attempt.
+    """
+    from db.database import SessionLocal
+    from models.content import Content
+
+    try:
+        run_pipeline(content_id)
+    except Exception as e:
+        is_final_retry = self.request.retries >= self.max_retries
+        if is_final_retry:
+            db = SessionLocal()
+            try:
+                content = db.query(Content).filter(Content.id == content_id).first()
+                if content:
+                    content.status = "failed"
+                    content.error_message = f"processing_error: {str(e)}"
+                    db.commit()
+            except Exception:
+                pass
+            finally:
+                db.close()
+        else:
+            logger.warning(
+                f"Content {content_id} processing attempt "
+                f"{self.request.retries + 1}/{self.max_retries} failed, retrying"
+            )
+
+        raise self.retry(exc=e, countdown=10 * (2 ** self.request.retries))

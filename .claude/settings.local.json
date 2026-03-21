@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -v \"^\\\\.$\")",
+      "Bash(curl -fsSL https://bun.sh/install)",
+      "Bash(bash)",
+      "Bash(export BUN_INSTALL=\"$HOME/.bun\")",
+      "Bash(export PATH=\"$BUN_INSTALL/bin:$PATH\")",
+      "Read(//c/Users/sheeb/.claude/skills/gstack/**)",
+      "Bash(./setup)",
+      "Bash(~/.bun/bin/bunx playwright:*)",
+      "Bash(~/.bun/bin/bun.exe x:*)",
+      "Bash(node -e \"require\\(''''playwright''''\\)\")"
+    ]
+  }
+}
