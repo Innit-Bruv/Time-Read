@@ -6,11 +6,12 @@ const API_SECRET = process.env.INTERNAL_API_SECRET || "dev-secret-change-me";
 /** Proxy GET /api/content/[contentId]/segment/[segmentId] → backend */
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { contentId: string; segmentId: string } }
+  { params }: { params: Promise<{ contentId: string; segmentId: string }> }
 ) {
+  const { contentId, segmentId } = await params;
   try {
     const response = await fetch(
-      `${API_URL}/content/${params.contentId}/segment/${params.segmentId}`,
+      `${API_URL}/content/${contentId}/segment/${segmentId}`,
       { headers: { Authorization: `Bearer ${API_SECRET}` } }
     );
 

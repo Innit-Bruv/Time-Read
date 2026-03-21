@@ -1,5 +1,5 @@
 import NextAuth from "next-auth";
-import EmailProvider from "next-auth/providers/email";
+import Resend from "next-auth/providers/resend";
 import PostgresAdapter from "@auth/pg-adapter";
 import { Pool } from "pg";
 
@@ -8,16 +8,8 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const { handlers, signIn, signOut, auth } = NextAuth({
     adapter: PostgresAdapter(pool),
     providers: [
-        EmailProvider({
-            server: {
-                host: process.env.EMAIL_SERVER_HOST,
-                port: Number(process.env.EMAIL_SERVER_PORT || 465),
-                secure: true,
-                auth: {
-                    user: process.env.EMAIL_SERVER_USER,
-                    pass: process.env.EMAIL_SERVER_PASSWORD,
-                },
-            },
+        Resend({
+            apiKey: process.env.EMAIL_SERVER_PASSWORD,
             from: process.env.EMAIL_FROM || "onboarding@resend.dev",
         }),
     ],
@@ -27,7 +19,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     callbacks: {
         async signIn({ user }) {
-            // Single-user: only allow the configured email
             const allowedEmail = process.env.ALLOWED_EMAIL;
             if (allowedEmail && user.email !== allowedEmail) {
                 return false;
