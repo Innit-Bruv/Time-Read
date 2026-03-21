@@ -13,3 +13,7 @@ openai
 python-dotenv
 httpx
 pydantic[email]
+
+# Testing
+pytest
+pytest-asyncio
