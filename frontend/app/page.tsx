@@ -12,6 +12,7 @@ const CONTENT_TYPES = [
   { label: "Any", value: "" },
   { label: "Threads", value: "twitter_thread" },
   { label: "Substack", value: "substack" },
+  { label: "Articles", value: "article" },
   { label: "PDF", value: "pdf_report" },
 ];
 
@@ -39,7 +40,10 @@ export default function HomePage() {
       setRecommendation(res);
       setView("pack");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to get recommendations");
+      const msg = err instanceof Error ? err.message : "Failed to get recommendations";
+      setError(msg.toLowerCase().includes("404") || msg.toLowerCase().includes("no item")
+        ? "EMPTY_LIBRARY"
+        : msg);
     } finally {
       setLoading(false);
     }
@@ -107,10 +111,20 @@ export default function HomePage() {
             <TimeSelector value={timeBudget} onChange={setTimeBudget} />
 
             {/* Error */}
-            {error && (
+            {error && error !== "EMPTY_LIBRARY" && (
               <p className="text-sm text-center mb-4" style={{ color: "var(--danger)" }}>
                 {error}
               </p>
+            )}
+            {error === "EMPTY_LIBRARY" && (
+              <div className="text-center mb-4 space-y-2">
+                <p className="text-sm" style={{ color: "var(--danger)" }}>
+                  Your library is empty — save some articles first.
+                </p>
+                <a href="/archive" className="text-xs text-accent/70 hover:text-accent underline underline-offset-4 transition-colors">
+                  Go to Archive →
+                </a>
+              </div>
             )}
 
             {/* Begin Reading button — prominent but compact */}

@@ -1,4 +1,4 @@
-"""Session router — POST /session/track, GET /content/{id}/segment/{id}."""
+"""Session router — POST /session/track, GET /content/{id}/segment/{id}, GET /content/{id}/segments."""
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,7 +8,7 @@ from sqlalchemy import func
 from auth import verify_api_key
 from db.database import get_db
 from models.content import Content, Segment, ReadingSession, UserStats
-from models.schemas import TrackRequest, TrackResponse, SegmentResponse
+from models.schemas import TrackRequest, TrackResponse, SegmentResponse, RecommendItem, RecommendResponse
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -47,6 +47,48 @@ def get_segment(content_id: uuid.UUID, segment_id: uuid.UUID, db: Session = Depe
         estimated_time=segment.estimated_time,
         text=segment.text,
         word_count=segment.word_count,
+    )
+
+
+@router.get("/content/{content_id}/segments", response_model=RecommendResponse)
+def get_content_segments(content_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Return all segments of a content item as a RecommendResponse so the Reader can consume them directly."""
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+    if content.status != "ready":
+        raise HTTPException(status_code=409, detail=f"Content is not ready (status: {content.status})")
+
+    segments = (
+        db.query(Segment)
+        .filter(Segment.content_id == content_id)
+        .order_by(Segment.segment_index)
+        .all()
+    )
+    if not segments:
+        raise HTTPException(status_code=404, detail="No segments found for this content")
+
+    total_segments = len(segments)
+    items = [
+        RecommendItem(
+            content_id=content.id,
+            segment_id=seg.id,
+            title=content.title,
+            source=content.source,
+            author=content.author,
+            content_type=content.content_type,
+            estimated_time=seg.estimated_time,
+            segment_index=seg.segment_index,
+            total_segments=total_segments,
+            is_continuation=seg.segment_index > 0,
+        )
+        for seg in segments
+    ]
+
+    return RecommendResponse(
+        session_id=uuid.uuid4(),
+        total_estimated_time=sum(seg.estimated_time for seg in segments),
+        items=items,
     )
 
 

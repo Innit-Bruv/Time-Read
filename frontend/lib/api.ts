@@ -120,6 +120,10 @@ export async function getSegment(contentId: string, segmentId: string): Promise<
   return apiFetch(`/api/content/${contentId}/segment/${segmentId}`);
 }
 
+export async function getContentSegments(contentId: string): Promise<RecommendResponse> {
+  return apiFetch(`/api/content/${contentId}/segments`);
+}
+
 // --- Session Tracking ---
 
 export interface TrackRequest {

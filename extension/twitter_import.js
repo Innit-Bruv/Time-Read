@@ -1,8 +1,9 @@
 /**
  * TimeRead Extension — Twitter Bookmark Import
- * 
- * Content script that detects bookmark pages and injects an import button.
- * Injected on twitter.com/i/bookmarks and x.com/i/bookmarks.
+ *
+ * Content script injected on twitter.com/i/bookmarks and x.com/i/bookmarks.
+ * Injects an "Import to TimeRead" button and imports bookmarks sequentially
+ * to avoid hammering the backend.
  */
 
 (function () {
@@ -36,7 +37,7 @@
     btn.addEventListener("click", handleImport);
     document.body.appendChild(btn);
 
-    // Listen for auto-import from background alarm (Feature 4)
+    // Listen for auto-import from background alarm
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.type === "AUTO_IMPORT") {
             console.log("[TimeRead] Auto-import triggered by alarm");
@@ -46,16 +47,23 @@
         return true;
     });
 
+    /** Send a SAVE_URL message and wait for the background to respond. */
+    function saveUrl(url, title) {
+        return new Promise((resolve) => {
+            chrome.runtime.sendMessage({ type: "SAVE_URL", url, title }, (response) => {
+                resolve(response || { success: false, error: "No response from background" });
+            });
+        });
+    }
+
     async function handleImport() {
         btn.disabled = true;
         btn.textContent = "🔍 Scanning bookmarks...";
 
-        // Scrape visible bookmark tweets
         const tweets = scrapeBookmarks();
-        const qualifying = filterQualifying(tweets);
 
-        if (qualifying.length === 0) {
-            btn.textContent = "No qualifying content found";
+        if (tweets.length === 0) {
+            btn.textContent = "No bookmarks visible";
             setTimeout(() => {
                 btn.textContent = "📚 Import to TimeRead";
                 btn.disabled = false;
@@ -63,9 +71,8 @@
             return;
         }
 
-        // Show confirmation
         const confirmed = confirm(
-            `Found ${qualifying.length} qualifying items (threads, long tweets, article links).\n\nImport to TimeRead?`
+            `Found ${tweets.length} bookmark${tweets.length !== 1 ? "s" : ""} visible on screen.\n\nImport all to TimeRead?`
         );
 
         if (!confirmed) {
@@ -74,34 +81,32 @@
             return;
         }
 
-        // Batch import with delay
-        btn.textContent = `Importing 0/${qualifying.length}...`;
+        // Sequential import — one at a time, wait for each to complete
         let imported = 0;
+        let failed = 0;
 
-        for (let i = 0; i < qualifying.length; i += 20) {
-            const batch = qualifying.slice(i, i + 20);
-            for (const tweet of batch) {
-                try {
-                    chrome.runtime.sendMessage({
-                        type: "SAVE_URL",
-                        url: tweet.url,
-                        title: tweet.text?.substring(0, 100) || "Twitter Bookmark",
-                    });
+        for (let i = 0; i < tweets.length; i++) {
+            const tweet = tweets[i];
+            btn.textContent = `Saving ${i + 1}/${tweets.length}...`;
+            try {
+                const result = await saveUrl(tweet.url, tweet.text?.substring(0, 100) || "Twitter Bookmark");
+                if (result.success) {
                     imported++;
-                    btn.textContent = `Importing ${imported}/${qualifying.length}...`;
-                } catch (err) {
-                    console.error("Import error:", err);
+                } else {
+                    failed++;
+                    console.warn("[TimeRead] Failed to save:", tweet.url, result.error);
                 }
-                // 500ms delay between items
-                await new Promise((r) => setTimeout(r, 500));
+            } catch (err) {
+                failed++;
+                console.error("[TimeRead] Import error:", err);
             }
         }
 
-        btn.textContent = `✓ Imported ${imported} items`;
+        btn.textContent = `✓ Saved ${imported}${failed > 0 ? ` (${failed} failed)` : ""}`;
         setTimeout(() => {
             btn.textContent = "📚 Import to TimeRead";
             btn.disabled = false;
-        }, 3000);
+        }, 4000);
     }
 
     function scrapeBookmarks() {
@@ -114,29 +119,12 @@
             const url = linkEl ? `https://x.com${linkEl.getAttribute("href")}` : null;
             const text = textEl ? textEl.textContent : "";
 
-            // Check for external links
-            const externalLinks = Array.from(el.querySelectorAll('a[href*="t.co"]'))
-                .map((a) => a.getAttribute("href"))
-                .filter(Boolean);
-
+            // Import all bookmarked tweets — fxtwitter handles threads and single tweets alike
             if (url) {
-                tweets.push({
-                    url,
-                    text,
-                    hasExternalLinks: externalLinks.length > 0,
-                    isLong: text.length > 280,
-                });
+                tweets.push({ url, text });
             }
         });
 
         return tweets;
-    }
-
-    function filterQualifying(tweets) {
-        // Import filter rules per PRD Section 15:
-        // - is_thread (same author, ≥2 tweets) — simplified: threads have /status/ in URL
-        // - contains external article URL
-        // - tweet length > 280 chars
-        return tweets.filter((t) => t.hasExternalLinks || t.isLong);
     }
 })();

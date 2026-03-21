@@ -70,7 +70,7 @@ class TestFetchAndExtract:
         mock_response.raise_for_status = MagicMock()
         mock_response.text = "<html><body>content</body></html>"
 
-        long_text = "This is meaningful text content for a test. " * 10  # >100 words
+        long_text = "This is meaningful text content for a test. " * 15  # >100 words
 
         with patch('httpx.get', return_value=mock_response), \
              patch('trafilatura.extract', return_value=long_text):
@@ -116,6 +116,94 @@ class TestFetchAndExtract:
              patch('services.extractor._extract_newspaper', return_value=None):
             try:
                 fetch_and_extract("https://example.com/article", "article")
+                assert False, "Should have raised ExtractionError"
+            except ExtractionError as e:
+                assert "extraction_failed" in str(e)
+
+
+class TestExtractTwitter:
+    def test_rewrites_x_com_to_fxtwitter(self):
+        """Twitter URLs must be rewritten to fxtwitter.com before fetching."""
+        import httpx
+        from services.extractor import fetch_and_extract
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.text = "<html><body>thread content</body></html>"
+
+        long_text = "This is a Twitter thread about testing. " * 10
+
+        captured_urls = []
+
+        def fake_get(url, **kwargs):
+            captured_urls.append(url)
+            return mock_response
+
+        with patch('httpx.get', side_effect=fake_get), \
+             patch('trafilatura.extract', return_value=long_text):
+            try:
+                fetch_and_extract("https://x.com/user/status/123456789", "twitter_thread")
+            except Exception:
+                pass
+
+        assert len(captured_urls) == 1
+        assert "fxtwitter.com" in captured_urls[0], f"Expected fxtwitter.com, got {captured_urls[0]}"
+        assert "x.com" not in captured_urls[0]
+
+    def test_rewrites_twitter_com_to_fxtwitter(self):
+        """twitter.com URLs are also rewritten to fxtwitter.com."""
+        import httpx
+        from services.extractor import fetch_and_extract
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.text = "<html><body>thread</body></html>"
+
+        long_text = "A Twitter thread. " * 15
+        captured_urls = []
+
+        def fake_get(url, **kwargs):
+            captured_urls.append(url)
+            return mock_response
+
+        with patch('httpx.get', side_effect=fake_get), \
+             patch('trafilatura.extract', return_value=long_text):
+            try:
+                fetch_and_extract("https://twitter.com/user/status/123", "twitter_thread")
+            except Exception:
+                pass
+
+        assert any("fxtwitter.com" in u for u in captured_urls)
+
+    def test_twitter_source_is_original_domain(self):
+        """Source field should reflect x.com, not fxtwitter.com."""
+        from services.extractor import fetch_and_extract
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.text = "<html><body>thread</body></html>"
+
+        long_text = "Thread content here. " * 10
+
+        with patch('httpx.get', return_value=mock_response), \
+             patch('trafilatura.extract', return_value=long_text):
+            result = fetch_and_extract("https://x.com/user/status/123", "twitter_thread")
+
+        assert result["source"] == "x.com"
+
+    def test_twitter_raises_extraction_error_on_empty_content(self):
+        """ExtractionError raised when fxtwitter returns no usable content."""
+        from services.extractor import fetch_and_extract, ExtractionError
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.text = "<html></html>"
+
+        with patch('httpx.get', return_value=mock_response), \
+             patch('trafilatura.extract', return_value=None), \
+             patch('services.extractor._extract_newspaper', return_value=None):
+            try:
+                fetch_and_extract("https://x.com/user/status/123", "twitter_thread")
                 assert False, "Should have raised ExtractionError"
             except ExtractionError as e:
                 assert "extraction_failed" in str(e)

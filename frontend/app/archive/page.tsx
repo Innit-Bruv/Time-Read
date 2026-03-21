@@ -1,14 +1,44 @@
+"use client";
+
+import { useState } from "react";
 import ArchiveList from "@/components/ArchiveList";
-import HackerNewsFeed from "@/components/HackerNewsFeed";
 import RSSFeedInput from "@/components/RSSFeedInput";
 import UrlIngestPanel from "@/components/UrlIngestPanel";
+import Reader from "@/components/Reader";
 import Link from "next/link";
-export const metadata = {
-    title: "Archive — TimeRead",
-    description: "Browse your saved reading library",
-};
+import { ArchiveItem, RecommendItem, getContentSegments } from "@/lib/api";
 
 export default function ArchivePage() {
+    const [readingItems, setReadingItems] = useState<RecommendItem[] | null>(null);
+    const [loadingContentId, setLoadingContentId] = useState<string | null>(null);
+    const [readError, setReadError] = useState<string | null>(null);
+
+    const handleSelectItem = async (item: ArchiveItem) => {
+        if (item.status !== "ready") {
+            setReadError(`"${item.title}" is still ${item.status} — check back in a moment.`);
+            return;
+        }
+        setLoadingContentId(item.content_id);
+        setReadError(null);
+        try {
+            const res = await getContentSegments(item.content_id);
+            setReadingItems(res.items);
+        } catch (err: unknown) {
+            setReadError(err instanceof Error ? err.message : "Failed to load content");
+        } finally {
+            setLoadingContentId(null);
+        }
+    };
+
+    if (readingItems) {
+        return (
+            <Reader
+                items={readingItems}
+                onEndSession={() => setReadingItems(null)}
+            />
+        );
+    }
+
     return (
         <main className="min-h-screen max-w-6xl mx-auto px-8 py-12">
             <div className="flex items-center justify-between mb-10">
@@ -28,6 +58,13 @@ export default function ArchivePage() {
                 </Link>
             </div>
 
+            {readError && (
+                <div className="mb-6 px-4 py-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-sm">
+                    {readError}
+                    <button className="ml-4 text-red-400/60 hover:text-red-400" onClick={() => setReadError(null)}>✕</button>
+                </div>
+            )}
+
             {/* Upload & Ingest Area */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-12">
                 <div className="lg:col-span-2 group flex flex-col items-center justify-center border-2 border-dashed border-accent/20 hover:border-accent/40 rounded-xl p-8 bg-accent/5 transition-all cursor-pointer">
@@ -45,13 +82,15 @@ export default function ArchivePage() {
                 </div>
             </div>
 
-            {/* Content Sources — HN + RSS */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
-                <HackerNewsFeed />
+            {/* RSS Feed Input */}
+            <div className="mb-12">
                 <RSSFeedInput />
             </div>
 
-            <ArchiveList />
+            <ArchiveList
+                onSelectItem={handleSelectItem}
+                loadingContentId={loadingContentId}
+            />
         </main>
     );
 }

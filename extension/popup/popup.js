@@ -35,7 +35,8 @@ chrome.storage.local.get(["apiUrl", "token"], (result) => {
     }
 });
 
-// Save button
+// Save button — POST /ingest and show "Saved — processing" immediately.
+// The background service worker handles polling; the user doesn't need to wait.
 saveBtn.addEventListener("click", async () => {
     saveBtn.disabled = true;
     saveBtn.textContent = "Saving...";
@@ -44,20 +45,40 @@ saveBtn.addEventListener("click", async () => {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const tab = tabs[0];
 
-    chrome.runtime.sendMessage(
-        { type: "SAVE_URL", url: tab.url, title: tab.title },
-        (response) => {
-            if (response?.success) {
-                const time = response.time ? `${Math.round(response.time)} min read` : "";
-                showStatus(status, `✓ Saved${time ? " — " + time : ""}`, "success");
-                saveBtn.textContent = "Saved ✓";
-            } else {
-                showStatus(status, response?.error || "Failed to save", "error");
-                saveBtn.textContent = "Save to TimeRead";
-                saveBtn.disabled = false;
-            }
+    const { apiUrl, token } = await chrome.storage.local.get(["apiUrl", "token"]);
+    if (!apiUrl || !token) {
+        showStatus(status, "Configure your token in Settings first", "error");
+        saveBtn.textContent = "Save to TimeRead";
+        saveBtn.disabled = false;
+        return;
+    }
+
+    try {
+        const response = await fetch(`${apiUrl}/ingest`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ url: tab.url, title: tab.title }),
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${response.status}`);
         }
-    );
+
+        const data = await response.json();
+        const alreadySaved = data.message === "Already saved";
+        showStatus(status, alreadySaved ? "Already in your library ✓" : "Saved — processing in background ✓", "success");
+        saveBtn.textContent = "Saved ✓";
+        // Close popup after a moment so user can get back to browsing
+        setTimeout(() => window.close(), 1500);
+    } catch (err) {
+        showStatus(status, err.message || "Failed to save", "error");
+        saveBtn.textContent = "Save to TimeRead";
+        saveBtn.disabled = false;
+    }
 });
 
 // Settings navigation

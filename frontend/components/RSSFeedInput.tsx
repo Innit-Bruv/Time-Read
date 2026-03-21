@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ingestContent } from "@/lib/api";
+import { ingestContent, getContentStatus } from "@/lib/api";
 import { getDomain } from "@/lib/utils";
 
 interface RSSEntry {
@@ -17,6 +17,8 @@ export default function RSSFeedInput() {
     const [error, setError] = useState("");
     const [saving, setSaving] = useState<Set<string>>(new Set());
     const [saved, setSaved] = useState<Set<string>>(new Set());
+    const [processing, setProcessing] = useState<Set<string>>(new Set());
+    const [ready, setReady] = useState<Set<string>>(new Set());
 
     async function handleFetch() {
         if (!feedUrl.trim()) return;
@@ -41,11 +43,28 @@ export default function RSSFeedInput() {
         }
     }
 
+    async function pollStatus(link: string, contentId: string) {
+        setProcessing((prev) => new Set(prev).add(link));
+        const interval = setInterval(async () => {
+            try {
+                const status = await getContentStatus(contentId);
+                if (status.status === "ready" || status.status === "failed") {
+                    clearInterval(interval);
+                    setProcessing((prev) => { const n = new Set(prev); n.delete(link); return n; });
+                    if (status.status === "ready") {
+                        setReady((prev) => new Set(prev).add(link));
+                    }
+                }
+            } catch { /* transient — keep polling */ }
+        }, 2000);
+    }
+
     async function handleSave(entry: RSSEntry) {
         setSaving((prev) => new Set(prev).add(entry.link));
         try {
-            await ingestContent({ url: entry.link, title: entry.title });
+            const result = await ingestContent({ url: entry.link, title: entry.title });
             setSaved((prev) => new Set(prev).add(entry.link));
+            pollStatus(entry.link, result.content_id);
         } catch (err) {
             console.error("Failed to save article:", err);
         } finally {
@@ -133,14 +152,18 @@ export default function RSSFeedInput() {
                                     onClick={() => handleSave(entry)}
                                     disabled={saving.has(entry.link) || saved.has(entry.link)}
                                     className={`shrink-0 text-xs px-3 py-1.5 rounded-lg border transition-all ${
-                                        saved.has(entry.link)
+                                        ready.has(entry.link)
                                             ? "bg-green-500/10 border-green-500/30 text-green-400"
+                                            : processing.has(entry.link)
+                                            ? "border-accent/20 text-accent/50 opacity-70"
+                                            : saved.has(entry.link)
+                                            ? "border-accent/20 text-accent/50 opacity-70"
                                             : saving.has(entry.link)
                                             ? "border-accent/20 text-accent/50 opacity-50"
                                             : "border-accent/20 text-accent/60 hover:border-accent hover:text-accent opacity-0 group-hover:opacity-100"
                                     }`}
                                 >
-                                    {saved.has(entry.link) ? "Saved ✓" : saving.has(entry.link) ? "..." : "+ Save"}
+                                    {ready.has(entry.link) ? "Ready ✓" : processing.has(entry.link) ? "Processing..." : saved.has(entry.link) ? "Saved" : saving.has(entry.link) ? "..." : "+ Save"}
                                 </button>
                             </div>
                         ))}

@@ -22,6 +22,9 @@ def fetch_and_extract(url: str, content_type: str) -> dict:
     if content_type == "pdf_report":
         return _extract_pdf(url)
 
+    if content_type == "twitter_thread":
+        return _extract_twitter(url)
+
     # Fetch page
     try:
         response = httpx.get(url, timeout=30, follow_redirects=True,
@@ -110,6 +113,45 @@ def _extract_newspaper(url: str) -> Optional[dict]:
     except Exception as e:
         logger.warning(f"newspaper3k failed for {url}: {e}")
         return None
+
+
+def _extract_twitter(url: str) -> dict:
+    """Extract Twitter/X thread content via fxtwitter.com mirror.
+
+    fxtwitter.com renders the full thread as readable HTML, avoiding Twitter's
+    JS-only SPA and bot-blocking. Rewrite x.com/twitter.com → fxtwitter.com,
+    then run the standard trafilatura extraction path.
+
+    Flow:
+      x.com/user/status/123  →  fxtwitter.com/user/status/123
+                              →  trafilatura extracts thread text
+    """
+    import re
+
+    # Rewrite x.com or twitter.com → fxtwitter.com
+    mirror_url = re.sub(r'https?://(www\.)?(twitter\.com|x\.com)/', 'https://fxtwitter.com/', url)
+
+    try:
+        response = httpx.get(mirror_url, timeout=30, follow_redirects=True,
+                             headers={"User-Agent": "Mozilla/5.0 (compatible; TimeRead/1.0)"})
+        response.raise_for_status()
+    except httpx.HTTPError as e:
+        raise ExtractionError(f"fetch_failed: {str(e)}")
+
+    html = response.text
+    result = _extract_trafilatura(html, mirror_url)
+    if result and len(result.get("clean_text", "").split()) >= 30:
+        # Twitter threads can be short — lower threshold to 30 words
+        result["source"] = url.split("//")[-1].split("/")[0]  # keep original domain as source
+        return result
+
+    # Fallback: try newspaper3k on the mirror URL
+    result = _extract_newspaper(mirror_url)
+    if result and len(result.get("clean_text", "").split()) >= 30:
+        result["source"] = url.split("//")[-1].split("/")[0]
+        return result
+
+    raise ExtractionError("extraction_failed: could not extract Twitter thread content")
 
 
 def _extract_pdf(url: str) -> dict:

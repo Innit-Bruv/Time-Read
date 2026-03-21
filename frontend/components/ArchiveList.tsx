@@ -5,6 +5,7 @@ import { ArchiveItem, getArchive } from "@/lib/api";
 
 interface ArchiveListProps {
     onSelectItem?: (item: ArchiveItem) => void;
+    loadingContentId?: string | null;
 }
 
 const CONTENT_TYPE_FILTERS = [
@@ -46,7 +47,7 @@ function statusBadge(status: string) {
     );
 }
 
-export default function ArchiveList({ onSelectItem }: ArchiveListProps) {
+export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveListProps) {
     const [items, setItems] = useState<ArchiveItem[]>([]);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
@@ -156,10 +157,15 @@ export default function ArchiveList({ onSelectItem }: ArchiveListProps) {
                             "research_paper": "school",
                         };
 
+                        const isLoading = loadingContentId === item.content_id;
                         return (
                             <div
                                 key={item.content_id}
-                                className="group flex flex-col bg-accent/5 border border-accent/5 rounded-2xl overflow-hidden hover:border-accent/30 transition-all cursor-pointer"
+                                className={`group flex flex-col bg-accent/5 border rounded-2xl overflow-hidden transition-all cursor-pointer ${
+                                    isLoading
+                                        ? "border-accent/50 opacity-70 pointer-events-none"
+                                        : "border-accent/5 hover:border-accent/30"
+                                }`}
                                 onClick={() => onSelectItem?.(item)}
                             >
                                 <div className="relative aspect-[4/3] overflow-hidden bg-[#0f0f0f]">
@@ -194,7 +200,11 @@ export default function ArchiveList({ onSelectItem }: ArchiveListProps) {
                                             </span>
                                         </div>
                                         <div className="flex items-center text-accent/30 group-hover:text-accent/70 transition-colors">
-                                            <span className="material-symbols-outlined text-sm">play_circle</span>
+                                            {isLoading ? (
+                                                <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                                            ) : (
+                                                <span className="material-symbols-outlined text-sm">play_circle</span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
