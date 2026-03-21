@@ -2,8 +2,8 @@
 
 Tests cover:
 - regex_parse (no external dependencies — always runs)
-- parse_query fallback behavior when OpenAI key is absent
-- LLM path with mocked OpenAI response
+- parse_query fallback behavior when Gemini key is absent
+- LLM path with mocked Gemini response
 """
 import sys
 import os
@@ -85,29 +85,26 @@ class TestParseQuery:
     """Tests for the full parse_query function."""
 
     def test_falls_back_to_regex_when_no_api_key(self):
-        """With OPENAI_API_KEY unset, must use regex fallback."""
-        with patch.dict('os.environ', {'OPENAI_API_KEY': ''}):
-            # Re-import after env change so module-level constant is cleared
-            import importlib
-            import services.llm_parser as mod
-            with patch.object(mod, 'OPENAI_API_KEY', ''):
-                result = mod.parse_query("15 minutes of substack")
+        """With GEMINI_API_KEY unset, must use regex fallback."""
+        import services.llm_parser as mod
+        with patch.object(mod, 'GEMINI_API_KEY', ''):
+            result = mod.parse_query("15 minutes of substack")
         assert result["time_budget"] == 15
         assert result["content_type"] == "substack"
 
     def test_uses_llm_when_api_key_present(self):
         """With an API key, parse_query should call _llm_parse."""
         mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
+        mock_response.text = json.dumps({
             "time_budget": 20,
             "topic": "artificial intelligence",
             "content_type": "article",
         })
 
         import services.llm_parser as mod
-        with patch.object(mod, 'OPENAI_API_KEY', 'sk-fake'), \
-             patch('services.llm_parser.OpenAI') as mock_openai:
-            mock_openai.return_value.chat.completions.create.return_value = mock_response
+        with patch.object(mod, 'GEMINI_API_KEY', 'AIza-fake'), \
+             patch('services.llm_parser.genai') as mock_genai:
+            mock_genai.GenerativeModel.return_value.generate_content.return_value = mock_response
             result = mod.parse_query("20 minutes of AI articles")
 
         assert result["time_budget"] == 20
@@ -117,12 +114,12 @@ class TestParseQuery:
     def test_llm_json_parse_failure_falls_back_to_regex(self):
         """If LLM returns non-JSON, regex fallback is used."""
         mock_response = MagicMock()
-        mock_response.choices[0].message.content = "not valid json at all"
+        mock_response.text = "not valid json at all"
 
         import services.llm_parser as mod
-        with patch.object(mod, 'OPENAI_API_KEY', 'sk-fake'), \
-             patch('services.llm_parser.OpenAI') as mock_openai:
-            mock_openai.return_value.chat.completions.create.return_value = mock_response
+        with patch.object(mod, 'GEMINI_API_KEY', 'AIza-fake'), \
+             patch('services.llm_parser.genai') as mock_genai:
+            mock_genai.GenerativeModel.return_value.generate_content.return_value = mock_response
             result = mod.parse_query("30 minutes of substack")
 
         # Should fall back to regex
@@ -132,9 +129,24 @@ class TestParseQuery:
     def test_llm_exception_falls_back_to_regex(self):
         """If LLM call raises, regex fallback is used."""
         import services.llm_parser as mod
-        with patch.object(mod, 'OPENAI_API_KEY', 'sk-fake'), \
-             patch('services.llm_parser.OpenAI') as mock_openai:
-            mock_openai.return_value.chat.completions.create.side_effect = Exception("timeout")
+        with patch.object(mod, 'GEMINI_API_KEY', 'AIza-fake'), \
+             patch('services.llm_parser.genai') as mock_genai:
+            mock_genai.GenerativeModel.return_value.generate_content.side_effect = Exception("timeout")
             result = mod.parse_query("10 min")
 
         assert result["time_budget"] == 10
+
+    def test_llm_strips_markdown_code_fences(self):
+        """Gemini sometimes wraps JSON in ```json ... ``` — should still parse."""
+        mock_response = MagicMock()
+        mock_response.text = '```json\n{"time_budget": 15, "topic": "Python", "content_type": null}\n```'
+
+        import services.llm_parser as mod
+        with patch.object(mod, 'GEMINI_API_KEY', 'AIza-fake'), \
+             patch('services.llm_parser.genai') as mock_genai:
+            mock_genai.GenerativeModel.return_value.generate_content.return_value = mock_response
+            result = mod.parse_query("15 minutes of Python")
+
+        assert result["time_budget"] == 15
+        assert result["topic"] == "Python"
+        assert result["content_type"] is None

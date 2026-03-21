@@ -1,51 +1,40 @@
-"""OpenAI embeddings service — generates 1536-dim vectors for content."""
+"""Gemini embeddings service — generates 768-dim vectors for content."""
 import os
 import logging
-from openai import OpenAI
+import google.generativeai as genai
 from dotenv import load_dotenv
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-# Lazy client init
-_client = None
-
-
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(api_key=OPENAI_API_KEY)
-    return _client
+EMBEDDING_MODEL = "models/text-embedding-004"
+EMBEDDING_DIMS = 768
 
 
-def generate_embedding(text: str, model: str = "text-embedding-3-small") -> list[float]:
-    """Generate a 1536-dimensional embedding from text.
-    
+def generate_embedding(text: str, model: str = EMBEDDING_MODEL) -> list[float]:
+    """Generate a 768-dimensional embedding from text.
+
     Args:
         text: Input text (title + first 1500 words typically).
-        model: OpenAI embedding model.
-    
+        model: Gemini embedding model.
+
     Returns:
-        List of 1536 floats.
-    
+        List of 768 floats.
+
     Raises:
         Exception on API failure.
     """
-    client = _get_client()
-    
-    # Truncate to ~8000 tokens (~6000 words) to stay within model limits
+    genai.configure(api_key=GEMINI_API_KEY)
+
+    # Truncate to ~6000 words to stay within model limits
     words = text.split()
     if len(words) > 6000:
         text = " ".join(words[:6000])
 
-    response = client.embeddings.create(
-        input=text,
-        model=model,
-    )
-
-    embedding = response.data[0].embedding
+    result = genai.embed_content(model=model, content=text)
+    embedding = result["embedding"]
     logger.info(f"Generated embedding: {len(embedding)} dimensions")
     return embedding

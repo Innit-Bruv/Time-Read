@@ -27,10 +27,10 @@ async def lifespan(app: FastAPI):
             "environment. Set a strong secret in your environment variables."
         )
 
-    if not os.getenv("OPENAI_API_KEY"):
+    if not os.getenv("GEMINI_API_KEY"):
         logger.warning(
-            "OPENAI_API_KEY is not set — embedding and LLM features will fail. "
-            "Set OPENAI_API_KEY in your environment."
+            "GEMINI_API_KEY is not set — embedding and LLM features will fail. "
+            "Set GEMINI_API_KEY in your environment."
         )
 
     if secret == DEFAULT_SECRET:

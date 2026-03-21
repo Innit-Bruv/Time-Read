@@ -9,7 +9,7 @@ redis
 trafilatura
 newspaper3k
 pdfplumber
-openai
+google-generativeai
 python-dotenv
 httpx
 pydantic[email]

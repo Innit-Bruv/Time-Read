@@ -1,20 +1,20 @@
 """LLM query parser — converts natural language to structured params.
 
-Uses gpt-4o-mini with regex fallback per PRD Section 12.
+Uses gemini-2.0-flash-lite with regex fallback per PRD Section 12.
 """
 import os
 import re
 import json
 import logging
 from typing import Optional
-from openai import OpenAI
+import google.generativeai as genai
 from dotenv import load_dotenv
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 SYSTEM_PROMPT = """You are a query parser for a reading app.
 Extract time_budget (minutes), topic, and content_type from the user's message.
@@ -28,14 +28,14 @@ Output: {"time_budget": 20, "topic": "AI", "content_type": "substack"}"""
 
 def parse_query(query: str) -> dict:
     """Parse a natural language query into structured parameters.
-    
+
     Tries LLM first, falls back to regex on failure.
-    
+
     Returns:
         dict with keys: time_budget, topic, content_type (any can be None)
     """
     # Try LLM first
-    if OPENAI_API_KEY:
+    if GEMINI_API_KEY:
         try:
             result = _llm_parse(query)
             if result:
@@ -48,20 +48,18 @@ def parse_query(query: str) -> dict:
 
 
 def _llm_parse(query: str) -> Optional[dict]:
-    """Parse using GPT-4o-mini."""
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    """Parse using Gemini."""
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel("gemini-2.0-flash-lite")
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": query},
-        ],
-        temperature=0,
-        max_tokens=100,
-    )
+    prompt = f"{SYSTEM_PROMPT}\n\nUser: {query}"
+    response = model.generate_content(prompt)
+    raw = response.text.strip()
 
-    raw = response.choices[0].message.content.strip()
+    # Strip markdown code fences if present
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
 
     # Try to parse JSON
     try:
