@@ -17,6 +17,8 @@ from services.embedder import generate_embedding
 
 logger = logging.getLogger(__name__)
 
+MAX_CHUNK_MINUTES = 10  # hard cap per reading item — never show more than this at once
+
 
 def generate_pack(
     db: Session,
@@ -110,6 +112,21 @@ def generate_pack(
         )
         if partial:
             items.append(partial)
+
+    # Cap each item to MAX_CHUNK_MINUTES — any segment longer than this gets a
+    # paragraph-level partial slice so the Reader shows the "Want to finish?" CTA.
+    for i, item in enumerate(items):
+        if item["estimated_time"] > MAX_CHUNK_MINUTES:
+            seg = db.query(Segment).filter(Segment.id == item["segment_id"]).first()
+            if seg:
+                start = item.get("paragraph_start", 0) or 0
+                partial = _partial_slice(seg, MAX_CHUNK_MINUTES, reading_speed, start)
+                if partial:
+                    items[i] = {
+                        **item,
+                        "estimated_time": partial["estimated_time"],
+                        "paragraph_end": partial["paragraph_end"],
+                    }
 
     total_time = sum(item["estimated_time"] for item in items)
 
@@ -415,7 +432,8 @@ def _try_partial_slice_fallback(
 
     seg, content = row
     start_para = para_offset_map.get(seg.id, 0)
-    partial = _partial_slice(seg, remaining_time, reading_speed, start_para)
+    chunk_time = min(remaining_time, MAX_CHUNK_MINUTES)
+    partial = _partial_slice(seg, chunk_time, reading_speed, start_para)
     if not partial:
         return None
 

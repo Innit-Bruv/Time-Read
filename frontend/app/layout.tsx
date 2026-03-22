@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
-import { Inter, Playfair_Display, Lora } from "next/font/google";
+import { Inter, Playfair_Display, Lora, Newsreader } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
 const lora = Lora({ subsets: ["latin"], variable: "--font-lora" });
+const newsreader = Newsreader({
+    subsets: ["latin"],
+    style: ["normal", "italic"],
+    variable: "--font-newsreader",
+});
 
 export const metadata: Metadata = {
   title: "TimeRead — Your Personal Reading Queue",
@@ -17,7 +22,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`dark ${inter.variable} ${playfair.variable} ${lora.variable}`}>
+    <html lang="en" className={`dark ${inter.variable} ${playfair.variable} ${lora.variable} ${newsreader.variable}`}>
       <head>
         <meta name="theme-color" content="#0f0f0f" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
