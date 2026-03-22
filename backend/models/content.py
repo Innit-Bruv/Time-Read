@@ -89,6 +89,8 @@ class ReadingSession(Base):
     time_spent = Column(Float)  # seconds
     completed = Column(Boolean, default=False)
     words_read = Column(Integer, default=0)
+    paragraph_offset = Column(Integer, default=0, nullable=False)  # paragraph index reading started from
+    paragraph_end = Column(Integer, nullable=True)  # paragraph index reading stopped at (exclusive); None = reached segment end
 
     # Relationships
     segment = relationship("Segment", back_populates="reading_sessions")

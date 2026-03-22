@@ -84,6 +84,8 @@ export interface RecommendItem {
   segment_index: number;
   total_segments: number;
   is_continuation: boolean;
+  paragraph_start?: number;    // paragraph index to start reading from (undefined = 0)
+  paragraph_end?: number | null; // paragraph index to stop at (exclusive); null/undefined = full segment
 }
 
 export interface RecommendResponse {
@@ -131,6 +133,7 @@ export interface TrackRequest {
   time_spent: number;
   words_read: number;
   completed: boolean;
+  paragraph_end?: number | null; // paragraph index user stopped at (for partial reads)
 }
 
 export async function trackReading(req: TrackRequest): Promise<{ ok: boolean }> {

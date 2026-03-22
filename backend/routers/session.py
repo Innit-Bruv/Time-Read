@@ -106,7 +106,8 @@ def track_reading(req: TrackRequest, db: Session = Depends(get_db)):
         time_spent=req.time_spent,
         words_read=req.words_read,
         completed=req.completed,
-        ended_at=datetime.now(timezone.utc) if req.completed else None,
+        ended_at=datetime.now(timezone.utc),
+        paragraph_end=req.paragraph_end,
     )
     db.add(session)
 

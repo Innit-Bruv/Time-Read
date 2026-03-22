@@ -39,6 +39,8 @@ class RecommendItem(BaseModel):
     segment_index: int
     total_segments: int
     is_continuation: bool
+    paragraph_start: int = 0          # paragraph index to start reading from (0 = beginning)
+    paragraph_end: Optional[int] = None  # paragraph index to stop at (exclusive); None = full segment
 
 
 class RecommendResponse(BaseModel):
@@ -71,6 +73,7 @@ class TrackRequest(BaseModel):
     time_spent: float  # seconds
     words_read: int
     completed: bool = False
+    paragraph_end: Optional[int] = None  # paragraph index user stopped at (for partial reads)
 
 
 class TrackResponse(BaseModel):

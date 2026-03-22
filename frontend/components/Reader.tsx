@@ -24,8 +24,18 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
     const sessionProgress = totalTime > 0 ? completedTime / totalTime : 0;
     const timeRemaining = totalTime - completedTime;
 
+    // For partial segments, word count covers only the visible slice of paragraphs.
+    const visibleWordCount = segment
+        ? segment.text
+              .split("\n\n")
+              .filter((p) => p.trim())
+              .slice(currentItem?.paragraph_start ?? 0, currentItem?.paragraph_end ?? undefined)
+              .join(" ")
+              .split(/\s+/).length
+        : 0;
+
     // Scroll-based reading progress (Kindle-style, Fix 8)
-    const scrollPercent = segment ? Math.min(Math.floor((wordsRead / Math.max(segment.word_count, 1)) * 100), 100) : 0;
+    const scrollPercent = segment ? Math.min(Math.floor((wordsRead / Math.max(visibleWordCount, 1)) * 100), 100) : 0;
 
     // Load segment text
     const loadSegment = useCallback(async () => {
@@ -85,12 +95,16 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
     const handleTrack = async (completed: boolean) => {
         if (!currentItem) return;
         const timeSpent = (Date.now() - startTime) / 1000;
+        // A partial item (paragraph_end set) never marks the whole segment completed.
+        // We record the stopping paragraph so the next session resumes from there.
+        const isPartialItem = currentItem.paragraph_end != null;
         try {
             await trackReading({
                 segment_id: currentItem.segment_id,
                 time_spent: timeSpent,
                 words_read: wordsRead,
-                completed,
+                completed: completed && !isPartialItem,
+                paragraph_end: isPartialItem ? currentItem.paragraph_end : undefined,
             });
         } catch (err) {
             console.error("Failed to track reading:", err);
@@ -176,9 +190,16 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
                         </header>
 
                         <section className="font-serif text-xl md:text-2xl reader-text text-slate-100/90 space-y-10">
-                            {segment.text.split("\n\n").map((para, i) => (
-                                <p key={i}>{para}</p>
-                            ))}
+                            {segment.text
+                                .split("\n\n")
+                                .filter((p) => p.trim())
+                                .slice(
+                                    currentItem.paragraph_start ?? 0,
+                                    currentItem.paragraph_end ?? undefined
+                                )
+                                .map((para, i) => (
+                                    <p key={i}>{para}</p>
+                                ))}
                         </section>
 
                         {/* End-of-piece card (Fix 7) — Continue or Move On */}
