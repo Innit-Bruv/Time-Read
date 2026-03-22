@@ -103,8 +103,8 @@ saveSettingsBtn.addEventListener("click", () => {
     const apiUrl = apiUrlInput.value.trim().replace(/\/$/, "");
     const token = apiTokenInput.value.trim();
 
-    if (!apiUrl || !token) {
-        showStatus(settingsStatus, "Both fields are required", "error");
+    if (!apiUrl) {
+        showStatus(settingsStatus, "API URL is required", "error");
         return;
     }
 
