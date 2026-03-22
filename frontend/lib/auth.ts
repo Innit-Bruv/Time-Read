@@ -10,6 +10,8 @@ const pool = new Pool({
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     adapter: PostgresAdapter(pool),
+    debug: true,
+    trustHost: true,
     providers: [
         Resend({
             apiKey: process.env.EMAIL_SERVER_PASSWORD,

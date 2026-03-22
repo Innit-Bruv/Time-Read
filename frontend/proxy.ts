@@ -13,6 +13,6 @@ export const config = {
          *   - /_next/* (Next.js internals)
          *   - /favicon.ico, static assets
          */
-        "/((?!auth|api/auth|_next/static|_next/image|favicon.ico|manifest.json|sw.js|workbox-.*).*)",
+        "/((?!auth|api/auth|api/debug-db|_next/static|_next/image|favicon.ico|manifest.json|sw.js|workbox-.*).*)",
     ],
 };
