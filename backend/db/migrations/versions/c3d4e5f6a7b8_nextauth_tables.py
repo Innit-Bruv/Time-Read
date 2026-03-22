@@ -17,9 +17,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
     op.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id TEXT NOT NULL PRIMARY KEY,
+            id TEXT NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
             name TEXT,
             email TEXT UNIQUE,
             "emailVerified" TIMESTAMPTZ,
