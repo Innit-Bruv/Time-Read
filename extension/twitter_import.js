@@ -72,7 +72,7 @@
         }
 
         const confirmed = confirm(
-            `Found ${tweets.length} bookmark${tweets.length !== 1 ? "s" : ""} visible on screen.\n\nImport all to TimeRead?`
+            `Found ${tweets.length} thread${tweets.length !== 1 ? "s" : ""} / article${tweets.length !== 1 ? "s" : ""} visible on screen.\n\nImport all to TimeRead?`
         );
 
         if (!confirmed) {
@@ -110,21 +110,49 @@
     }
 
     function scrapeBookmarks() {
-        const tweets = [];
-        const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
+        const items = [];
+        const seen = new Set();
 
-        tweetElements.forEach((el) => {
-            const linkEl = el.querySelector('a[href*="/status/"]');
-            const textEl = el.querySelector('[data-testid="tweetText"]');
-            const url = linkEl ? `https://x.com${linkEl.getAttribute("href")}` : null;
-            const text = textEl ? textEl.textContent : "";
-
-            // Import all bookmarked tweets — fxtwitter handles threads and single tweets alike
-            if (url) {
-                tweets.push({ url, text });
+        // 1. X Articles (Twitter Notes) — url pattern: x.com/i/article/...
+        document.querySelectorAll('a[href*="/i/article/"]').forEach((link) => {
+            const href = link.getAttribute("href");
+            const url = href.startsWith("http") ? href : `https://x.com${href}`;
+            if (!seen.has(url)) {
+                seen.add(url);
+                items.push({ url, text: link.textContent?.trim() || "X Article" });
             }
         });
 
-        return tweets;
+        // 2. Twitter/X threads only — skip standalone single tweets
+        document.querySelectorAll('article[data-testid="tweet"]').forEach((el) => {
+            const linkEl = el.querySelector('a[href*="/status/"]');
+            const textEl = el.querySelector('[data-testid="tweetText"]');
+            if (!linkEl) return;
+
+            const url = `https://x.com${linkEl.getAttribute("href")}`;
+            if (seen.has(url)) return;
+
+            const text = textEl ? textEl.textContent : "";
+
+            if (_isThread(el, text)) {
+                seen.add(url);
+                items.push({ url, text });
+            }
+        });
+
+        return items;
+    }
+
+    /**
+     * Heuristic thread detector. Checks for three common signals:
+     *   1. "Show this thread" link rendered by X inside the card
+     *   2. Thread-numbering prefix (e.g. "1/" or "1/10")
+     *   3. Explicit thread marker ("🧵" or "Thread:")
+     */
+    function _isThread(el, text) {
+        if (el.textContent.includes("Show this thread")) return true;
+        if (/^\s*1\//.test(text)) return true;
+        if (/^(🧵|thread:)/i.test(text.trim())) return true;
+        return false;
     }
 })();

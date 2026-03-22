@@ -28,9 +28,9 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
 });
 
 // Check if settings exist
-chrome.storage.local.get(["apiUrl", "token"], (result) => {
-    if (!result.apiUrl || !result.token) {
-        showStatus(status, "Configure your token in Settings first", "error");
+chrome.storage.local.get(["apiUrl"], (result) => {
+    if (!result.apiUrl) {
+        showStatus(status, "Configure your API URL in Settings first", "error");
         saveBtn.disabled = true;
     }
 });
@@ -46,20 +46,20 @@ saveBtn.addEventListener("click", async () => {
     const tab = tabs[0];
 
     const { apiUrl, token } = await chrome.storage.local.get(["apiUrl", "token"]);
-    if (!apiUrl || !token) {
-        showStatus(status, "Configure your token in Settings first", "error");
+    if (!apiUrl) {
+        showStatus(status, "Configure your API URL in Settings first", "error");
         saveBtn.textContent = "Save to TimeRead";
         saveBtn.disabled = false;
         return;
     }
 
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
     try {
-        const response = await fetch(`${apiUrl}/ingest`, {
+        const response = await fetch(`${apiUrl}/api/ingest`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
+            headers,
             body: JSON.stringify({ url: tab.url, title: tab.title }),
         });
 

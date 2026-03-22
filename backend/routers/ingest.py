@@ -20,6 +20,8 @@ def _detect_content_type(url: str, source_hint: str | None = None) -> str:
             return hint_lower
 
     if "twitter.com" in url_lower or "x.com" in url_lower:
+        if "/i/article/" in url_lower:
+            return "article"
         return "twitter_thread"
     elif "substack.com" in url_lower or ".substack." in url_lower:
         return "substack"

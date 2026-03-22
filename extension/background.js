@@ -95,8 +95,8 @@ async function pollStatus(contentId, apiUrl, token) {
 
     for (let i = 0; i < MAX_POLLS; i++) {
         try {
-            const response = await fetch(`${apiUrl}/content/${contentId}/status`, {
-                headers: { Authorization: `Bearer ${token}` },
+            const response = await fetch(`${apiUrl}/api/content/${contentId}/status`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
             });
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -149,18 +149,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 async function handleSave(url, title) {
     const { apiUrl, token } = await chrome.storage.local.get(["apiUrl", "token"]);
 
-    if (!apiUrl || !token) {
-        return { success: false, error: "Configure your TimeRead token in settings" };
+    if (!apiUrl) {
+        return { success: false, error: "Configure your TimeRead API URL in settings" };
     }
 
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
     try {
-        // POST /ingest
-        const response = await fetch(`${apiUrl}/ingest`, {
+        // POST /api/ingest — routed through Next.js proxy which adds the backend secret
+        const response = await fetch(`${apiUrl}/api/ingest`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
+            headers,
             body: JSON.stringify({ url, title }),
         });
 
