@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import ArchiveList from "@/components/ArchiveList";
 import RSSFeedInput from "@/components/RSSFeedInput";
 import UrlIngestPanel from "@/components/UrlIngestPanel";
@@ -12,6 +12,37 @@ export default function ArchivePage() {
     const [readingItems, setReadingItems] = useState<RecommendItem[] | null>(null);
     const [loadingContentId, setLoadingContentId] = useState<string | null>(null);
     const [readError, setReadError] = useState<string | null>(null);
+    const [uploadingPdf, setUploadingPdf] = useState(false);
+    const [pdfMessage, setPdfMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+    const [isDragOver, setIsDragOver] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handlePdfUpload = async (file: File) => {
+        if (!file.name.toLowerCase().endsWith(".pdf")) {
+            setPdfMessage({ type: "error", text: "Only PDF files are supported" });
+            return;
+        }
+        if (file.size > 20 * 1024 * 1024) {
+            setPdfMessage({ type: "error", text: "PDF too large (max 20MB)" });
+            return;
+        }
+        setUploadingPdf(true);
+        setPdfMessage(null);
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("title", file.name.replace(/\.pdf$/i, "").replace(/_/g, " "));
+        try {
+            const res = await fetch("/api/upload-pdf", { method: "POST", body: formData });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || "Upload failed");
+            setPdfMessage({ type: "success", text: `"${file.name}" uploaded — processing…` });
+        } catch (err) {
+            setPdfMessage({ type: "error", text: err instanceof Error ? err.message : "Upload failed" });
+        } finally {
+            setUploadingPdf(false);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+    };
 
     const handleSelectItem = async (item: ArchiveItem) => {
         if (item.status !== "ready") {
@@ -67,15 +98,42 @@ export default function ArchivePage() {
 
             {/* Upload & Ingest Area */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-12">
-                <div className="lg:col-span-2 group flex flex-col items-center justify-center border-2 border-dashed border-accent/20 hover:border-accent/40 rounded-xl p-8 bg-accent/5 transition-all cursor-pointer">
+                <div
+                    className={`lg:col-span-2 group flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-8 bg-accent/5 transition-all cursor-pointer ${isDragOver ? "border-accent/60 bg-accent/10" : "border-accent/20 hover:border-accent/40"}`}
+                    onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                    onDragLeave={() => setIsDragOver(false)}
+                    onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDragOver(false);
+                        const file = e.dataTransfer.files[0];
+                        if (file) handlePdfUpload(file);
+                    }}
+                    onClick={() => fileInputRef.current?.click()}
+                >
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".pdf"
+                        className="hidden"
+                        onChange={(e) => { const file = e.target.files?.[0]; if (file) handlePdfUpload(file); }}
+                    />
                     <div className="size-12 rounded-full bg-accent/10 flex items-center justify-center text-accent mb-4 group-hover:scale-110 transition-transform">
-                        <span className="material-symbols-outlined text-3xl">upload_file</span>
+                        <span className="material-symbols-outlined text-3xl">{uploadingPdf ? "hourglass_empty" : "upload_file"}</span>
                     </div>
                     <h3 className="text-lg font-bold mb-1 text-slate-100">Upload PDF Documents</h3>
                     <p className="text-sm text-accent/50 mb-6 text-center">Drag and drop your research papers or books here to begin ingestion</p>
-                    <button className="bg-accent/10 text-accent border border-accent/20 px-6 py-2 rounded-lg text-sm font-bold hover:bg-accent/20 transition-colors">
-                        Browse Local Files
+                    <button
+                        disabled={uploadingPdf}
+                        className="bg-accent/10 text-accent border border-accent/20 px-6 py-2 rounded-lg text-sm font-bold hover:bg-accent/20 transition-colors disabled:opacity-40"
+                        onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                    >
+                        {uploadingPdf ? "Uploading…" : "Browse Local Files"}
                     </button>
+                    {pdfMessage && (
+                        <p className={`text-xs mt-3 ${pdfMessage.type === "error" ? "text-red-400" : "text-green-400"}`}>
+                            {pdfMessage.text}
+                        </p>
+                    )}
                 </div>
                 <div className="flex flex-col gap-6 p-8 border border-accent/10 rounded-xl bg-[#0f0f0f]">
                     <UrlIngestPanel />

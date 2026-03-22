@@ -1,6 +1,6 @@
-"""Ingest router — POST /ingest, GET /content/{id}/status."""
+"""Ingest router — POST /ingest, POST /upload-pdf, GET /content/{id}/status."""
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
 from auth import verify_api_key
@@ -80,6 +80,61 @@ def ingest_content(req: IngestRequest, db: Session = Depends(get_db)):
         content_id=content.id,
         status="processing",
         message="Content queued for processing",
+    )
+
+
+@router.post("/upload-pdf", response_model=IngestResponse, status_code=202)
+async def upload_pdf(
+    file: UploadFile = File(...),
+    title: str = Form(None),
+    db: Session = Depends(get_db),
+):
+    """Upload a PDF file directly for processing. Saves to /tmp, dispatches pipeline."""
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    content_bytes = await file.read()
+
+    if len(content_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="PDF too large (max 20MB)")
+
+    # Save to /tmp with a unique name
+    file_id = str(uuid.uuid4())
+    tmp_path = f"/tmp/{file_id}.pdf"
+    with open(tmp_path, "wb") as f:
+        f.write(content_bytes)
+
+    # Use file:// URL so extractor reads from disk instead of HTTP
+    file_url = f"file://{tmp_path}"
+    display_title = title or file.filename.replace(".pdf", "").replace("_", " ")
+
+    content = Content(
+        title=display_title,
+        url=file_url,
+        content_type="pdf_report",
+        status="pending",
+    )
+    db.add(content)
+    db.commit()
+    db.refresh(content)
+
+    try:
+        from tasks.process_content import process_content_task
+        process_content_task.delay(str(content.id))
+    except Exception:
+        try:
+            from tasks.process_content import run_pipeline
+            run_pipeline(str(content.id))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                f"Synchronous fallback pipeline failed for {content.id}: {e}"
+            )
+
+    return IngestResponse(
+        content_id=content.id,
+        status="processing",
+        message="PDF queued for processing",
     )
 
 

@@ -2,9 +2,20 @@
 
 Constraint: Never split mid-sentence. Always break on paragraph boundaries.
 """
+import re
 
 DEFAULT_READING_SPEED = 200  # wpm, overridden by user_stats
 SEGMENT_MINUTES = 6  # target segment length in minutes
+
+
+def _strip_markdown(text: str) -> int:
+    """Strip Markdown syntax characters before counting words.
+
+    Prevents bold/italic markers, headers, image syntax, etc. from inflating
+    word counts when segments contain Markdown-formatted text.
+    """
+    clean = re.sub(r'[#*_!>`\[\]()\-]', '', text)
+    return len(clean.split())
 
 
 def segment_content(text: str, reading_speed: int = DEFAULT_READING_SPEED) -> list[dict]:
@@ -30,7 +41,7 @@ def segment_content(text: str, reading_speed: int = DEFAULT_READING_SPEED) -> li
         if not para:
             continue
 
-        para_words = len(para.split())
+        para_words = _strip_markdown(para)
 
         if current_words + para_words > words_per_segment and current_chunk:
             # Close current segment
@@ -51,7 +62,7 @@ def segment_content(text: str, reading_speed: int = DEFAULT_READING_SPEED) -> li
 def _build_segment(paragraphs: list[str], reading_speed: int, index: int) -> dict:
     """Build a segment dict from a list of paragraphs."""
     text = "\n\n".join(paragraphs)
-    word_count = len(text.split())
+    word_count = _strip_markdown(text)
     estimated_time = round(word_count / reading_speed, 2)
 
     return {

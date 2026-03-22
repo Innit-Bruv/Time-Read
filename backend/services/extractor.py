@@ -57,6 +57,9 @@ def _extract_trafilatura(html: str, url: str) -> Optional[dict]:
             include_comments=False,
             include_tables=True,
             favor_recall=True,
+            include_formatting=True,   # bold, italic, headers → Markdown
+            include_images=True,        # adds ![alt](url) for inline images
+            include_links=False,        # omit links — distracting mid-read
         )
         if not text:
             return None
@@ -65,7 +68,7 @@ def _extract_trafilatura(html: str, url: str) -> Optional[dict]:
             html, url=url, output_format="json",
             include_comments=False,
         )
-        # trafilatura metadata extraction 
+        # trafilatura metadata extraction
         meta = {}
         if metadata:
             import json
@@ -74,7 +77,9 @@ def _extract_trafilatura(html: str, url: str) -> Optional[dict]:
             except (json.JSONDecodeError, TypeError):
                 meta = {}
 
-        words = text.split()
+        import re
+        clean = re.sub(r'[#*_!>`\[\]()\-]', '', text)
+        word_count = len(clean.split())
         source = url.split("//")[-1].split("/")[0]  # extract domain
 
         return {
@@ -82,7 +87,7 @@ def _extract_trafilatura(html: str, url: str) -> Optional[dict]:
             "title": meta.get("title", ""),
             "author": meta.get("author", ""),
             "source": source,
-            "word_count": len(words),
+            "word_count": word_count,
         }
     except Exception as e:
         logger.warning(f"trafilatura failed for {url}: {e}")
@@ -155,10 +160,44 @@ def _extract_twitter(url: str) -> dict:
 
 
 def _extract_pdf(url: str) -> dict:
-    """Extract text from PDF URL using pdfplumber."""
+    """Extract text from PDF URL using pdfplumber.
+
+    Supports both HTTP URLs and file:// paths (uploaded PDFs saved to /tmp).
+    """
     import os
     import tempfile
     import pdfplumber
+
+    # Handle uploaded PDFs stored locally
+    if url.startswith("file://"):
+        file_path = url[7:]  # strip "file://"
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                texts = []
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        texts.append(text)
+            full_text = "\n\n".join(texts)
+            words = full_text.split()
+            if len(words) < 100:
+                raise ExtractionError("extraction_failed: PDF has too little text")
+            return {
+                "clean_text": full_text,
+                "title": "",
+                "author": "",
+                "source": "uploaded",
+                "word_count": len(words),
+            }
+        except ExtractionError:
+            raise
+        except Exception as e:
+            raise ExtractionError(f"pdf_read_failed: {str(e)}")
+        finally:
+            try:
+                os.unlink(file_path)
+            except OSError:
+                pass
 
     try:
         response = httpx.get(url, timeout=60, follow_redirects=True)

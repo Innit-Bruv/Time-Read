@@ -1,7 +1,21 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import ReactMarkdown from "react-markdown";
+import type { ComponentPropsWithoutRef } from "react";
 import { RecommendItem, getSegment, trackReading, SegmentResponse } from "@/lib/api";
+
+function SafeImage(props: ComponentPropsWithoutRef<"img">) {
+    return (
+        <img
+            {...props}
+            alt={props.alt || ""}
+            loading="lazy"
+            style={{ maxWidth: "100%", borderRadius: "8px" }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+    );
+}
 
 interface ReaderProps {
     items: RecommendItem[];
@@ -205,7 +219,7 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
                         <div className="text-accent/50 uppercase tracking-widest text-sm">Loading segment...</div>
                     </div>
                 ) : segment ? (
-                    <article className="w-full max-w-[680px]">
+                    <article className="w-full max-w-[680px] mx-auto">
                         <header className="mb-16">
                             <div className="flex items-center gap-3 mb-6">
                                 <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-accent py-1 px-2 border border-accent/20 rounded">
@@ -237,10 +251,12 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
                             )}
                         </header>
 
-                        <section className="font-serif text-xl md:text-2xl reader-text text-slate-100/90 space-y-10">
-                            {visibleParagraphs.map((para, i) => (
-                                <p key={i}>{para}</p>
-                            ))}
+                        <section className="reader-text">
+                            <div className="prose prose-invert max-w-none text-xl md:text-2xl leading-relaxed">
+                                <ReactMarkdown components={{ img: SafeImage }}>
+                                    {visibleParagraphs.join("\n\n")}
+                                </ReactMarkdown>
+                            </div>
                         </section>
 
                         {/* Footer CTA */}

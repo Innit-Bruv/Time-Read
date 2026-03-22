@@ -1,8 +1,22 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     reactStrictMode: true,
-    // Use webpack instead of Turbopack (required for next-pwa)
+    // Next.js 16 defaults to Turbopack; next-pwa adds webpack config which
+    // triggers a warning. The empty turbopack object silences it.
     turbopack: {},
+    async headers() {
+        return [
+            {
+                source: "/(.*)",
+                headers: [
+                    {
+                        key: "Content-Security-Policy",
+                        value: "img-src 'self' data: https: blob:;",
+                    },
+                ],
+            },
+        ];
+    },
 };
 
 // PWA configuration using next-pwa

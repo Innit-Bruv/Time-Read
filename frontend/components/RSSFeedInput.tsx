@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ingestContent, getContentStatus } from "@/lib/api";
 import { getDomain } from "@/lib/utils";
 
@@ -19,6 +19,11 @@ export default function RSSFeedInput() {
     const [saved, setSaved] = useState<Set<string>>(new Set());
     const [processing, setProcessing] = useState<Set<string>>(new Set());
     const [ready, setReady] = useState<Set<string>>(new Set());
+    const pollRefs = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+
+    useEffect(() => {
+        return () => { pollRefs.current.forEach(clearInterval); };
+    }, []);
 
     async function handleFetch() {
         if (!feedUrl.trim()) return;
@@ -50,6 +55,7 @@ export default function RSSFeedInput() {
                 const status = await getContentStatus(contentId);
                 if (status.status === "ready" || status.status === "failed") {
                     clearInterval(interval);
+                    pollRefs.current.delete(link);
                     setProcessing((prev) => { const n = new Set(prev); n.delete(link); return n; });
                     if (status.status === "ready") {
                         setReady((prev) => new Set(prev).add(link));
@@ -57,6 +63,7 @@ export default function RSSFeedInput() {
                 }
             } catch { /* transient — keep polling */ }
         }, 2000);
+        pollRefs.current.set(link, interval);
     }
 
     async function handleSave(entry: RSSEntry) {
