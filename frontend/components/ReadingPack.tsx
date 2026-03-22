@@ -33,10 +33,6 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
                 currentSum += item.estimated_time;
             }
         }
-        // Always select at least one if possible
-        if (initialSelections.size === 0 && items.length > 0) {
-            initialSelections.add(items[0].segment_id);
-        }
         // Update ONLY if nothing is selected (prevents reset on re-renders)
         setSelectedIds((prev) => prev.size > 0 ? prev : initialSelections);
     }, [items, targetTime]);
