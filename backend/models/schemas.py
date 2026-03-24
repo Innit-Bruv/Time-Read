@@ -118,3 +118,10 @@ class ParsedQuery(BaseModel):
     time_budget: Optional[float] = None
     topic: Optional[str] = None
     content_type: Optional[str] = None
+
+
+# --- Manual Session ---
+
+class ManualSessionRequest(BaseModel):
+    content_ids: list[uuid.UUID]
+    time_budget: float  # minutes

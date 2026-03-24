@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RecommendItem } from "@/lib/api";
+import { RecommendItem, createManualSession } from "@/lib/api";
 
 interface ReadingPackProps {
     items: RecommendItem[];
     targetTime: number;
-    onBeginSession: (selectedItems: RecommendItem[]) => void;
+    onBeginSession: (items: RecommendItem[], chunkMode: boolean, contentIds: string[]) => void;
 }
 
 function contentTypeLabel(type: string): string {
@@ -21,8 +21,9 @@ function contentTypeLabel(type: string): string {
 }
 
 export default function ReadingPack({ items, targetTime, onBeginSession }: ReadingPackProps) {
-    // Determine initial selection: fill up to targetTime
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
 
     useEffect(() => {
         const initialSelections = new Set<string>();
@@ -33,7 +34,6 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
                 currentSum += item.estimated_time;
             }
         }
-        // Update ONLY if nothing is selected (prevents reset on re-renders)
         setSelectedIds((prev) => prev.size > 0 ? prev : initialSelections);
     }, [items, targetTime]);
 
@@ -43,16 +43,47 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
     const selectedTime = selectedItems.reduce((acc, item) => acc + item.estimated_time, 0);
     const progressPercent = Math.min(100, (selectedTime / targetTime) * 100);
 
+    // Chunk mode: N > 1 articles selected
+    const isChunkMode = selectedItems.length > 1;
+    const chunkMinutes = isChunkMode ? targetTime / selectedItems.length : 0;
+    const chunkTooShort = isChunkMode && chunkMinutes < 1;
+
     const toggleSelection = (segmentId: string) => {
         setSelectedIds(prev => {
             const next = new Set(prev);
-            if (next.has(segmentId)) {
-                next.delete(segmentId);
-            } else {
-                next.add(segmentId);
-            }
+            if (next.has(segmentId)) next.delete(segmentId);
+            else next.add(segmentId);
             return next;
         });
+    };
+
+    const handleBeginSession = async () => {
+        if (selectedItems.length === 0) return;
+        setError("");
+
+        if (selectedItems.length === 1) {
+            // Normal mode — pass item directly, no backend call needed
+            onBeginSession(selectedItems, false, [selectedItems[0].content_id]);
+            return;
+        }
+
+        // Chunk mode — call /session/manual to get equal-time slices
+        setLoading(true);
+        try {
+            const result = await createManualSession({
+                content_ids: selectedItems.map(i => i.content_id),
+                time_budget: targetTime,
+            });
+            onBeginSession(
+                result.items,
+                true,
+                selectedItems.map(i => i.content_id)
+            );
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Failed to start session");
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -62,23 +93,32 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
                     Curated For You
                 </h3>
                 <div className="flex items-center justify-between text-xs text-muted mb-1 px-1">
-                    <span>{Math.round(selectedTime)} min selected</span>
+                    <span>
+                        {isChunkMode
+                            ? `${selectedItems.length} selected · ${Math.round(chunkMinutes * 10) / 10} min each`
+                            : `${Math.round(selectedTime)} min selected`}
+                    </span>
                     <span>Target: {targetTime} min</span>
                 </div>
                 <div className="h-1.5 w-full bg-[#1f1b13] rounded-full overflow-hidden">
-                    <div 
+                    <div
                         className={`h-full transition-all duration-300 ${selectedTime > targetTime ? 'bg-amber-500' : 'bg-accent'}`}
                         style={{ width: `${progressPercent}%` }}
                     ></div>
                 </div>
+                {chunkTooShort && (
+                    <p className="text-[11px] text-amber-400/80 uppercase tracking-widest pt-1">
+                        Each article gets less than 1 min — consider fewer picks
+                    </p>
+                )}
             </div>
 
             <div className="space-y-3">
                 {items.map((item) => {
                     const isSelected = selectedIds.has(item.segment_id);
                     return (
-                        <div 
-                            key={item.segment_id} 
+                        <div
+                            key={item.segment_id}
                             onClick={() => toggleSelection(item.segment_id)}
                             className={`card cursor-pointer group transition-all duration-300 ${isSelected ? 'border-accent/40 bg-accent/5' : 'border-accent/10 opacity-60 hover:opacity-100 hover:border-accent/20'}`}
                         >
@@ -124,12 +164,20 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
                 })}
             </div>
 
-            <button 
-                className="btn-primary mt-4 w-full disabled:opacity-50 disabled:cursor-not-allowed" 
-                onClick={() => onBeginSession(selectedItems)}
-                disabled={selectedItems.length === 0}
+            {error && (
+                <p className="text-sm text-center" style={{ color: "var(--danger)" }}>{error}</p>
+            )}
+
+            <button
+                className="btn-primary mt-4 w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleBeginSession}
+                disabled={selectedItems.length === 0 || loading}
             >
-                Begin Session ({Math.round(selectedTime)} min)
+                {loading
+                    ? "Building session…"
+                    : isChunkMode
+                        ? `Begin Session · ${selectedItems.length} articles · ${Math.round(chunkMinutes * 10) / 10} min each`
+                        : `Begin Session (${Math.round(selectedTime)} min)`}
             </button>
         </div>
     );

@@ -145,6 +145,20 @@ export async function trackReading(req: TrackRequest): Promise<{ ok: boolean }> 
   });
 }
 
+// --- Manual Session ---
+
+export interface ManualSessionRequest {
+  content_ids: string[];
+  time_budget: number; // minutes
+}
+
+export async function createManualSession(req: ManualSessionRequest): Promise<RecommendResponse> {
+  return apiFetch("/api/session/manual", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
 // --- Archive ---
 
 export interface ArchiveItem {

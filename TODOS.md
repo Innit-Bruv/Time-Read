@@ -44,3 +44,21 @@
 **Context:** In Reader.tsx, the fixed bottom pill renders `{scrollPercent}%` and `{Math.ceil(timeRemaining)} min left`. Add `aria-label={\`Reading progress: ${scrollPercent}%, ${Math.ceil(timeRemaining)} minutes remaining\`}` to the outer div. Also consider `role="status"` so screen readers announce updates without being called explicitly.
 **Depends on:** Substack reader overhaul (this PR — pill already exists)
 **Effort:** XS (human: ~15min / CC: ~2min) | Priority: P3
+
+## TODO-006: Incomplete-article priority in recommender
+**What:** When returning the recommended article list, sort articles with existing reading history (incomplete) to the top.
+**Why:** The chunk reading spec says incomplete articles appear first. Currently recommender doesn't query ReadingSession at all.
+**Pros:** Makes the "resume where you left off" flow feel intentional; feeds the resumption cherry-pick naturally.
+**Cons:** Adds a JOIN to the recommend query.
+**Context:** In recommender.py, after fetching candidate segments, run a secondary query: `SELECT content_id FROM reading_sessions GROUP BY content_id` and use that set to partition candidates — incomplete first, then unread.
+**Depends on:** chunk reading mode (this PR) for full effect
+**Effort:** S (human: ~2h / CC: ~15min) | Priority: P2
+
+## TODO-007: Archive page reading progress per article
+**What:** Show "X% read" badge next to each article in the archive list.
+**Why:** Users need to see which articles they've started and how far they got — especially once chunk mode surfaces incomplete articles prominently.
+**Pros:** Natural companion to TODO-004 (thumbnail grid); feeds incomplete-first ordering; lets users manage their reading backlog.
+**Cons:** Requires reading history aggregation per content_id.
+**Context:** Archive endpoint (`GET /archive`) needs to JOIN reading_sessions and compute completion_percent per content. The ArchiveItem schema already has `completion_percent: float = 0` — it's just not populated. Wire it up in archive.py.
+**Depends on:** TODO-006 (incomplete-first ordering) for full effect
+**Effort:** S (human: ~3h / CC: ~20min) | Priority: P2

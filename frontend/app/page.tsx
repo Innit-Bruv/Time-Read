@@ -4,7 +4,7 @@ import { useState } from "react";
 import TimeSelector from "@/components/TimeSelector";
 import ReadingPack from "@/components/ReadingPack";
 import Reader from "@/components/Reader";
-import { getRecommendations, RecommendResponse } from "@/lib/api";
+import { getRecommendations, createManualSession, RecommendResponse } from "@/lib/api";
 
 type View = "home" | "pack" | "reading";
 
@@ -25,6 +25,8 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [recommendation, setRecommendation] = useState<RecommendResponse | null>(null);
+  const [chunkMode, setChunkMode] = useState(false);
+  const [chunkContentIds, setChunkContentIds] = useState<string[]>([]);
 
   const handleGetRecommendations = async () => {
     if (!timeBudget) return;
@@ -58,14 +60,33 @@ export default function HomePage() {
     setRecommendation(null);
     setTimeBudget(null);
     setTopic("");
+    setChunkMode(false);
+    setChunkContentIds([]);
+  };
+
+  const handleRound2 = async () => {
+    if (!timeBudget || chunkContentIds.length === 0 || !recommendation) return;
+    try {
+      const result = await createManualSession({
+        content_ids: chunkContentIds,
+        time_budget: timeBudget,
+      });
+      setRecommendation(result);
+    } catch (err) {
+      console.error("Round 2 failed:", err);
+    }
   };
 
   // Reading view
   if (view === "reading" && recommendation) {
     return (
       <Reader
+        key={recommendation.session_id}
         items={recommendation.items}
         onEndSession={handleEndSession}
+        chunkMode={chunkMode}
+        timeBudget={timeBudget ?? 0}
+        onRequestRound2={handleRound2}
       />
     );
   }
@@ -207,12 +228,14 @@ export default function HomePage() {
             <ReadingPack
               items={recommendation.items}
               targetTime={timeBudget!}
-              onBeginSession={(selectedItems) => {
+              onBeginSession={(sessionItems, isChunkMode, contentIds) => {
                 setRecommendation({
                   ...recommendation,
-                  items: selectedItems,
-                  total_estimated_time: selectedItems.reduce((acc, item) => acc + item.estimated_time, 0)
+                  items: sessionItems,
+                  total_estimated_time: sessionItems.reduce((acc, item) => acc + item.estimated_time, 0),
                 });
+                setChunkMode(isChunkMode);
+                setChunkContentIds(contentIds);
                 handleBeginSession();
               }}
             />

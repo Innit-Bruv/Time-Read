@@ -8,7 +8,7 @@ from sqlalchemy import func
 from auth import verify_api_key
 from db.database import get_db
 from models.content import Content, Segment, ReadingSession, UserStats
-from models.schemas import TrackRequest, TrackResponse, SegmentResponse, RecommendItem, RecommendResponse
+from models.schemas import TrackRequest, TrackResponse, SegmentResponse, RecommendItem, RecommendResponse, ManualSessionRequest
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -90,6 +90,107 @@ def get_content_segments(content_id: uuid.UUID, db: Session = Depends(get_db)):
     return RecommendResponse(
         session_id=uuid.uuid4(),
         total_estimated_time=sum(seg.estimated_time for seg in segments),
+        items=items,
+    )
+
+
+@router.post("/session/manual", response_model=RecommendResponse)
+def manual_session(req: ManualSessionRequest, db: Session = Depends(get_db)):
+    """Build a chunk reading session from explicitly selected articles.
+
+    Divides time_budget equally across N content_ids. For each article,
+    picks up from the last tracked paragraph_end (resumption-aware).
+    Minimum chunk: 1 minute. Articles not yet ready are silently skipped.
+
+    Flow:
+      content_ids[] + time_budget
+        → chunk_minutes = max(1, budget / N)
+        → for each article: find segment, lookup last paragraph_end,
+          walk paragraphs until chunk_words reached
+        → return RecommendItem[] with paragraph_start/end set per chunk
+    """
+    if not req.content_ids:
+        raise HTTPException(status_code=400, detail="No articles selected")
+    if req.time_budget <= 0:
+        raise HTTPException(status_code=400, detail="time_budget must be positive")
+
+    n = len(req.content_ids)
+    chunk_minutes = max(1.0, req.time_budget / n)
+
+    user_stats = db.query(UserStats).filter(UserStats.id == 1).first()
+    reading_speed = user_stats.reading_speed if user_stats else 200.0
+    chunk_words = chunk_minutes * reading_speed
+
+    # Batch-fetch reading history for all first segments (single query)
+    # Maps segment_id → last paragraph_end
+    items = []
+    for content_id in req.content_ids:
+        content = db.query(Content).filter(Content.id == content_id).first()
+        if not content or content.status != "ready":
+            continue
+
+        segment = (
+            db.query(Segment)
+            .filter(Segment.content_id == content_id)
+            .order_by(Segment.segment_index)
+            .first()
+        )
+        if not segment:
+            continue
+
+        total_segments = (
+            db.query(func.count(Segment.id))
+            .filter(Segment.content_id == content_id)
+            .scalar()
+        )
+
+        # Resumption: last paragraph_end for this segment
+        last_session = (
+            db.query(ReadingSession)
+            .filter(ReadingSession.segment_id == segment.id)
+            .order_by(ReadingSession.ended_at.desc())
+            .first()
+        )
+        para_start = 0
+        if last_session and last_session.paragraph_end is not None:
+            para_start = last_session.paragraph_end
+
+        # Split into paragraphs and find chunk boundary
+        paragraphs = [p for p in segment.text.split("\n\n") if p.strip()]
+        total_paras = len(paragraphs)
+
+        if para_start >= total_paras:
+            para_start = 0  # fully read before — restart from beginning
+
+        running_words = 0
+        para_end = None  # None = show full article (shorter than chunk)
+        for i, para in enumerate(paragraphs[para_start:], start=para_start):
+            running_words += len(para.split())
+            if running_words >= chunk_words:
+                para_end = i + 1  # exclusive
+                break
+
+        items.append(RecommendItem(
+            content_id=content.id,
+            segment_id=segment.id,
+            title=content.title,
+            source=content.source,
+            author=content.author,
+            content_type=content.content_type,
+            estimated_time=chunk_minutes,
+            segment_index=segment.segment_index,
+            total_segments=total_segments,
+            is_continuation=para_start > 0,
+            paragraph_start=para_start,
+            paragraph_end=para_end,
+        ))
+
+    if not items:
+        raise HTTPException(status_code=409, detail="None of the selected articles are ready")
+
+    return RecommendResponse(
+        session_id=uuid.uuid4(),
+        total_estimated_time=sum(item.estimated_time for item in items),
         items=items,
     )
 

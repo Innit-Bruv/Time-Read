@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import type { ComponentPropsWithoutRef } from "react";
 import { RecommendItem, getSegment, trackReading, SegmentResponse } from "@/lib/api";
+import { useChunkMode } from "@/hooks/useChunkMode";
 
 interface SafeImageProps extends ComponentPropsWithoutRef<"img"> {
     baseUrl?: string;
@@ -96,9 +97,12 @@ function FaviconAvatar({ author, source }: FaviconAvatarProps) {
 interface ReaderProps {
     items: RecommendItem[];
     onEndSession: () => void;
+    chunkMode?: boolean;
+    timeBudget?: number;
+    onRequestRound2?: () => Promise<void>;
 }
 
-export default function Reader({ items, onEndSession }: ReaderProps) {
+export default function Reader({ items, onEndSession, chunkMode = false, timeBudget = 0, onRequestRound2 }: ReaderProps) {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [segment, setSegment] = useState<SegmentResponse | null>(null);
     const [loading, setLoading] = useState(true);
@@ -106,6 +110,8 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
     const [startTime, setStartTime] = useState<number>(Date.now());
     const [wordsRead, setWordsRead] = useState(0);
     const [showEndCard, setShowEndCard] = useState(false);
+    const [round2Loading, setRound2Loading] = useState(false);
+    const chunk = useChunkMode(items, timeBudget);
     const scrollRef = useRef<HTMLDivElement>(null);
     const rafRef = useRef<number | null>(null);
 
@@ -260,6 +266,30 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
         onEndSession();
     };
 
+    // Chunk mode: "Next chunk" — save position and move to next article.
+    const handleChunkNext = async () => {
+        await handleTrack(false); // save paragraph_end, not completed
+        if (currentIndex < items.length - 1) {
+            setCurrentIndex(currentIndex + 1);
+        }
+        // If on last chunk, the end card handles Round 2 / End Session
+    };
+
+    // Chunk mode: "Go Deeper — Round 2"
+    const handleRound2 = async () => {
+        await handleTrack(false);
+        if (!onRequestRound2) return;
+        setRound2Loading(true);
+        try {
+            await onRequestRound2();
+            // Reader re-mounts via key={session_id} in page.tsx
+        } finally {
+            setRound2Loading(false);
+        }
+    };
+
+    const isLastChunk = chunkMode && currentIndex === items.length - 1;
+
     if (!currentItem) return null;
 
     return (
@@ -379,8 +409,68 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
                         {/* Footer CTA */}
                         <footer className="mt-16 pt-10 border-t border-accent/10">
                             <div className="flex flex-col items-center gap-5">
-                                {isPartialChunk ? (
-                                    // Partial chunk CTA — "Want to finish this article?"
+                                {isPartialChunk && chunkMode ? (
+                                    // Chunk mode end card
+                                    <>
+                                        <div className="text-center mb-2">
+                                            <p className="text-[10px] uppercase tracking-[0.3em] text-accent/40 mb-2">
+                                                Article {currentIndex + 1} of {items.length}
+                                            </p>
+                                            <p className="text-accent font-bold text-2xl leading-snug" style={{ fontFamily: "var(--font-reader)" }}>
+                                                {isLastChunk ? "You've sampled all articles!" : "Chunk complete"}
+                                            </p>
+                                            {remainingSegmentMinutes > 0 && !isLastChunk && (
+                                                <p className="text-xs text-accent/40 mt-2">
+                                                    ~{remainingSegmentMinutes} min left in this article
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Read Full Article — always available */}
+                                        <button
+                                            onClick={handleContinuePartial}
+                                            className="w-full max-w-sm bg-accent text-[#0f0f0f] py-4 rounded-xl font-bold uppercase tracking-[0.15em] transition-all hover:opacity-90"
+                                        >
+                                            Read Full Article
+                                        </button>
+
+                                        {isLastChunk ? (
+                                            // Last chunk → Round 2 or End
+                                            <div className="w-full max-w-sm space-y-3">
+                                                <button
+                                                    onClick={handleRound2}
+                                                    disabled={round2Loading}
+                                                    className="w-full bg-accent/10 border border-accent/20 text-accent py-4 rounded-xl font-bold uppercase tracking-[0.12em] transition-all hover:bg-accent/20 disabled:opacity-40"
+                                                >
+                                                    {round2Loading ? "Loading…" : "Go Deeper — Round 2"}
+                                                </button>
+                                                <button
+                                                    onClick={handleEndSession}
+                                                    className="w-full py-3 text-[11px] uppercase tracking-widest text-accent/40 hover:text-accent border border-accent/10 hover:border-accent/30 rounded-xl transition-all"
+                                                >
+                                                    End Session
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            // Next chunk
+                                            <div className="w-full max-w-sm space-y-3">
+                                                <button
+                                                    onClick={handleChunkNext}
+                                                    className="w-full bg-accent/10 border border-accent/20 text-accent py-4 rounded-xl font-bold uppercase tracking-[0.12em] transition-all hover:bg-accent/20 flex justify-center items-center gap-2"
+                                                >
+                                                    Next: {items[currentIndex + 1]?.title.slice(0, 30)}{(items[currentIndex + 1]?.title.length ?? 0) > 30 ? "…" : ""} →
+                                                </button>
+                                                <button
+                                                    onClick={handleEndSession}
+                                                    className="w-full py-3 text-[11px] uppercase tracking-widest text-accent/40 hover:text-accent border border-accent/10 hover:border-accent/30 rounded-xl transition-all"
+                                                >
+                                                    End Session
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : isPartialChunk ? (
+                                    // Single-article partial chunk CTA — "Want to finish this article?"
                                     <>
                                         <div className="text-center mb-2">
                                             <p className="text-[10px] uppercase tracking-[0.3em] text-accent/40 mb-3">
@@ -470,25 +560,46 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
                 )}
             </main>
 
-            {/* Bottom Reading Stats Pill */}
+            {/* Bottom stats — chunk mode shows article pills, normal mode shows progress pill */}
             {segment && !showEndCard && (
-                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 bg-[#0f0e0c]/95 backdrop-blur-sm border border-accent/10 rounded-full flex items-center gap-5 shadow-xl">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-16 h-0.5 bg-accent/15 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-accent rounded-full transition-all duration-300"
-                                style={{ width: `${scrollPercent}%` }}
-                            ></div>
-                        </div>
-                        <span className="text-[11px] text-accent font-semibold tabular-nums">
-                            {scrollPercent}%
+                chunk.isChunkMode ? (
+                    // Chunk mode: N article progress pills
+                    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 bg-[#0f0e0c]/95 backdrop-blur-sm border border-accent/10 rounded-full shadow-xl">
+                        {items.map((_, i) => (
+                            <div key={i} className="relative h-1 w-8 bg-accent/15 rounded-full overflow-hidden">
+                                <div
+                                    className="absolute inset-y-0 left-0 bg-accent rounded-full transition-all duration-300"
+                                    style={{
+                                        width: i < currentIndex ? "100%" : i === currentIndex ? `${scrollPercent}%` : "0%",
+                                    }}
+                                />
+                            </div>
+                        ))}
+                        <div className="h-3 w-px bg-accent/20 mx-1" />
+                        <span className="text-[10px] text-accent/50 uppercase tracking-widest">
+                            {currentIndex + 1}/{items.length}
                         </span>
                     </div>
-                    <div className="h-3 w-px bg-accent/20"></div>
-                    <span className="text-[10px] text-accent/50 uppercase tracking-widest">
-                        {Math.ceil(timeRemaining)} min left
-                    </span>
-                </div>
+                ) : (
+                    // Normal mode: single progress pill
+                    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 bg-[#0f0e0c]/95 backdrop-blur-sm border border-accent/10 rounded-full flex items-center gap-5 shadow-xl">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-16 h-0.5 bg-accent/15 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-accent rounded-full transition-all duration-300"
+                                    style={{ width: `${scrollPercent}%` }}
+                                ></div>
+                            </div>
+                            <span className="text-[11px] text-accent font-semibold tabular-nums">
+                                {scrollPercent}%
+                            </span>
+                        </div>
+                        <div className="h-3 w-px bg-accent/20"></div>
+                        <span className="text-[10px] text-accent/50 uppercase tracking-widest">
+                            {Math.ceil(timeRemaining)} min left
+                        </span>
+                    </div>
+                )
             )}
         </div>
     );
