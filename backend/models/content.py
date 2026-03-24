@@ -29,6 +29,7 @@ class Content(Base):
     estimated_time = Column(Float, default=0)  # minutes
     embedding = Column(Vector(768))   # text-embedding-004 → 768 dim
     embedding_model = Column(Text, default="text-embedding-004")  # track which model generated this
+    cover_image = Column(Text)       # og:image URL extracted at ingest; null for older content
     publish_date = Column(DateTime(timezone=True))
     status = Column(
         Text, default="pending",

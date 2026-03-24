@@ -5,7 +5,7 @@
 **Why:** Articles saved before the Markdown change render as plain text in the reader. Users can't benefit from the rich reader without re-ingesting.
 **Pros:** Existing library gets Markdown formatting without manual re-ingest.
 **Cons:** Requires a new backend endpoint + UI; triggers re-extraction which costs API credits for embedding.
-**Context:** extractor.py was updated to output Markdown (include_formatting=True). Existing segments.text is plain text. react-markdown renders plain text fine but loses formatting/images. When tackling this: add POST /content/{id}/reextract backend route that re-runs run_pipeline() on the existing content_id, overwriting segments.
+**Context:** extractor.py was updated to output Markdown (include_formatting=True). Existing segments.text is plain text. react-markdown renders plain text fine but loses formatting/images. When tackling this: add POST /content/{id}/reextract backend route that re-runs run_pipeline() on the existing content_id, overwriting segments. Also: existing content has cover_image=null and publish_date=null — re-extraction will populate these too.
 **Depends on:** Markdown reader (this PR)
 **Effort:** S (human: ~4h / CC: ~20min) | Priority: P2
 
@@ -17,3 +17,30 @@
 **Context:** next-pwa is installed and configured. The Reader component knows all segment IDs at session start. Use the Cache API directly in Reader.tsx: `caches.open('session').then(cache => cache.addAll(segmentUrls))`. The service worker's StaleWhileRevalidate strategy for /api/ routes handles the rest.
 **Depends on:** PWA fix (this PR)
 **Effort:** S (human: ~4h / CC: ~20min) | Priority: P3
+
+## TODO-003: Reading skeleton / shimmer loading state
+**What:** Replace the "Loading…" text in the Reader with a Substack-style skeleton — pulsing placeholder lines that fill the article column while segment text fetches.
+**Why:** The current uppercase "Loading…" text feels jarring. A skeleton preserves layout and signals content is coming.
+**Pros:** Dramatically improves perceived performance; consistent with the Substack feel established by this PR.
+**Cons:** Minimal — pure CSS animation + conditional render.
+**Context:** In Reader.tsx, the `loading` state currently renders `<div>Loading…</div>`. Replace with a skeleton component: 3-4 lines at ~80% width, 1-2 at ~60%, pulsing with a CSS animation. Newsreader font placeholder lines.
+**Depends on:** Substack reader overhaul (cover_image PR)
+**Effort:** S (human: ~2h / CC: ~10min) | Priority: P3
+
+## TODO-004: Archive page thumbnail grid
+**What:** Show article cover images as small thumbnails next to each title in the archive list.
+**Why:** Now that `cover_image` is stored in the Content model, the archive can display it. Makes the reading list feel like a real app (Pocket, Instapaper, Readwise) rather than a plain list.
+**Pros:** Immediate visual upgrade to the archive; leverages the cover_image work from this PR at near-zero marginal cost.
+**Cons:** Articles ingested before this PR have no cover_image — they'll show a placeholder or no thumbnail.
+**Context:** Archive page is at `frontend/app/archive/page.tsx`. The API response from GET /archive (or whatever lists content) needs to include `cover_image`. Add a thumbnail column to the list: `<img src={cover_image} className="w-12 h-12 rounded object-cover" />` with a gray placeholder on null.
+**Depends on:** cover_image column + Substack reader PR
+**Effort:** S (human: ~3h / CC: ~15min) | Priority: P2
+
+## TODO-005: Reading progress pill accessibility
+**What:** Add `aria-label="Reading progress: X%, Y minutes remaining"` to the bottom reading stats pill in Reader.tsx.
+**Why:** Screen readers currently cannot announce reading progress. The pill is visually prominent but invisible to assistive technology.
+**Pros:** Zero visual change; meaningful accessibility improvement; ~2 lines of code.
+**Cons:** None — pure additive.
+**Context:** In Reader.tsx, the fixed bottom pill renders `{scrollPercent}%` and `{Math.ceil(timeRemaining)} min left`. Add `aria-label={\`Reading progress: ${scrollPercent}%, ${Math.ceil(timeRemaining)} minutes remaining\`}` to the outer div. Also consider `role="status"` so screen readers announce updates without being called explicitly.
+**Depends on:** Substack reader overhaul (this PR — pill already exists)
+**Effort:** XS (human: ~15min / CC: ~2min) | Priority: P3

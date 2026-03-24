@@ -116,6 +116,8 @@ export interface SegmentResponse {
   estimated_time: number;
   text: string;
   word_count: number;
+  cover_image: string | null;
+  publish_date: string | null;
 }
 
 export async function getSegment(contentId: string, segmentId: string): Promise<SegmentResponse> {

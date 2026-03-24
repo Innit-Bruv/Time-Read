@@ -71,6 +71,10 @@ def run_pipeline(content_id: str) -> None:
             content.author = result["author"]
         if result.get("source"):
             content.source = result["source"]
+        if result.get("cover_image"):
+            content.cover_image = result["cover_image"]
+        if result.get("publish_date"):
+            content.publish_date = result["publish_date"]
 
         # Step 2: Get reading speed from user_stats
         user_stats = db.query(UserStats).filter(UserStats.id == 1).first()

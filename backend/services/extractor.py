@@ -3,6 +3,7 @@
 Priority: trafilatura → newspaper3k → fallback
 """
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 import trafilatura
 import httpx
@@ -82,12 +83,28 @@ def _extract_trafilatura(html: str, url: str) -> Optional[dict]:
         word_count = len(clean.split())
         source = url.split("//")[-1].split("/")[0]  # extract domain
 
+        # Cover image — trafilatura normalizes og:image/twitter:image/json-ld into "image"
+        cover_image = meta.get("image") or None
+
+        # Publish date — parse ISO string to UTC datetime; ignore malformed values
+        publish_date = None
+        date_str = meta.get("date") or None
+        if date_str:
+            try:
+                publish_date = datetime.fromisoformat(date_str)
+                if publish_date.tzinfo is None:
+                    publish_date = publish_date.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                logger.debug(f"Could not parse publish_date '{date_str}' for {url}")
+
         return {
             "clean_text": text,
             "title": meta.get("title", ""),
             "author": meta.get("author", ""),
             "source": source,
             "word_count": word_count,
+            "cover_image": cover_image,
+            "publish_date": publish_date,
         }
     except Exception as e:
         logger.warning(f"trafilatura failed for {url}: {e}")

@@ -56,3 +56,4 @@ htmlcov/
 public/sw.js
 public/workbox-*.js
 .gstack/
+.vercel

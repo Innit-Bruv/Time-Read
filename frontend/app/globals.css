@@ -90,6 +90,22 @@ body {
     --tw-prose-invert-hr: rgba(232, 213, 176, 0.15);
 }
 
+/* Drop cap — first letter of first paragraph in reader */
+.reader-text > p:first-of-type::first-letter {
+  float: left;
+  font-size: 4.5rem;
+  line-height: 0.85;
+  margin: 0.1em 0.1em 0 0;
+  color: #e8d5b0;
+  font-family: var(--font-reader);
+}
+
+@media (max-width: 640px) {
+  .reader-text > p:first-of-type::first-letter {
+    font-size: 3.5rem;
+  }
+}
+
 /* Reader typography — Substack-inspired */
 .reader-text {
   font-family: var(--font-reader);
@@ -98,7 +114,7 @@ body {
   letter-spacing: 0.003em;
   max-width: 680px;
   margin: 0 auto;
-  color: rgb(241 245 249 / 0.88);
+  color: #f2f2f0;
 }
 
 .reader-text p {

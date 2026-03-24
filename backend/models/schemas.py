@@ -64,6 +64,8 @@ class SegmentResponse(BaseModel):
     estimated_time: float
     text: str
     word_count: int
+    cover_image: Optional[str] = None
+    publish_date: Optional[datetime] = None
 
 
 # --- Session Tracking ---

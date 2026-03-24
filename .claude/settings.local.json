@@ -10,7 +10,14 @@
       "Bash(./setup)",
       "Bash(~/.bun/bin/bunx playwright:*)",
       "Bash(~/.bun/bin/bun.exe x:*)",
-      "Bash(node -e \"require\\(''''playwright''''\\)\")"
+      "Bash(node -e \"require\\(''''playwright''''\\)\")",
+      "Skill(gstack-upgrade)",
+      "Bash(npm run:*)",
+      "Read(//mnt/c/Users/**)",
+      "Bash(cmd.exe /c \"cd C:\\\\Users\\\\sheeb\\\\Time_Read\\\\frontend && npm run build\")",
+      "Bash(cmd.exe /c \"cd C:\\\\Users\\\\sheeb\\\\Time_Read\\\\frontend && npm run build 2>&1\")",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Users\\\\sheeb\\\\Time_Read\\\\frontend && npm run build\" 2>&1)",
+      "Bash(powershell.exe -Command \"cd 'C:\\\\Users\\\\sheeb\\\\Time_Read'; git status; git log --oneline -3\" 2>&1)"
     ]
   }
 }

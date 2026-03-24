@@ -47,6 +47,8 @@ def get_segment(content_id: uuid.UUID, segment_id: uuid.UUID, db: Session = Depe
         estimated_time=segment.estimated_time,
         text=segment.text,
         word_count=segment.word_count,
+        cover_image=content.cover_image,
+        publish_date=content.publish_date,
     )
 
 

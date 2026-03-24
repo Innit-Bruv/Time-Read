@@ -299,3 +299,49 @@ class TestExtractPdfTempfileCleanup:
                 assert False, "Should have raised ExtractionError"
             except ExtractionError as e:
                 assert "extraction_failed" in str(e)
+
+
+class TestCoverImageAndPublishDate:
+    """Tests for cover_image and publish_date extraction in _extract_trafilatura."""
+
+    def _run_trafilatura(self, meta_dict: dict, text: str = None):
+        """Helper to run _extract_trafilatura with mocked trafilatura output."""
+        import json
+        from services.extractor import _extract_trafilatura
+
+        html = "<html><body>content</body></html>"
+        url = "https://example.com/article"
+        long_text = text or ("word " * 150)
+        meta_json = json.dumps(meta_dict)
+
+        with patch('trafilatura.extract', side_effect=[long_text, meta_json]):
+            return _extract_trafilatura(html, url)
+
+    def test_cover_image_extracted_from_meta(self):
+        """cover_image is populated when trafilatura returns an 'image' field."""
+        result = self._run_trafilatura({"image": "https://example.com/og.jpg", "title": "T", "author": "A"})
+        assert result is not None
+        assert result["cover_image"] == "https://example.com/og.jpg"
+
+    def test_cover_image_none_when_missing(self):
+        """cover_image is None when trafilatura returns no 'image' field."""
+        result = self._run_trafilatura({"title": "T", "author": "A"})
+        assert result is not None
+        assert result["cover_image"] is None
+
+    def test_publish_date_parsed_to_utc_datetime(self):
+        """publish_date is a timezone-aware UTC datetime when a valid date is present."""
+        from datetime import timezone as tz
+        result = self._run_trafilatura({"date": "2024-03-15", "title": "T"})
+        assert result is not None
+        assert result["publish_date"] is not None
+        assert result["publish_date"].tzinfo is not None
+        assert result["publish_date"].year == 2024
+        assert result["publish_date"].month == 3
+        assert result["publish_date"].day == 15
+
+    def test_malformed_date_does_not_crash(self):
+        """Malformed publish_date values are silently ignored (publish_date = None)."""
+        result = self._run_trafilatura({"date": "not-a-date", "title": "T"})
+        assert result is not None
+        assert result["publish_date"] is None

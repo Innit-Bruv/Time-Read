@@ -5,13 +5,90 @@ import ReactMarkdown from "react-markdown";
 import type { ComponentPropsWithoutRef } from "react";
 import { RecommendItem, getSegment, trackReading, SegmentResponse } from "@/lib/api";
 
-function SafeImage(props: ComponentPropsWithoutRef<"img">) {
+interface SafeImageProps extends ComponentPropsWithoutRef<"img"> {
+    baseUrl?: string;
+}
+
+function SafeImage({ src, baseUrl, alt, ...props }: SafeImageProps) {
+    const [failed, setFailed] = useState(false);
+
+    // Resolve relative URLs against the article's base URL
+    let resolvedSrc = src;
+    if (typeof src === "string" && baseUrl && !src.startsWith("http") && !src.startsWith("data:") && !src.startsWith("//")) {
+        try {
+            resolvedSrc = new URL(src, baseUrl).href;
+        } catch {
+            resolvedSrc = src;
+        }
+    }
+
+    if (failed) {
+        return (
+            <span className="flex items-center justify-center w-full my-8 py-6 border border-dashed border-accent/20 rounded text-accent/30 text-xs uppercase tracking-widest">
+                Image unavailable
+            </span>
+        );
+    }
+
     return (
         <img
             {...props}
-            alt={props.alt || ""}
+            src={resolvedSrc}
+            alt={alt || ""}
             loading="lazy"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            onError={() => setFailed(true)}
+        />
+    );
+}
+
+function getInitials(name: string): string {
+    return name.trim().split(/\s+/).map(w => w[0]).join("").toUpperCase().slice(0, 2);
+}
+
+// Stable color from author name for initials circle
+function authorColor(name: string): string {
+    const colors = ["#6366f1", "#8b5cf6", "#d946ef", "#f43f5e", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6"];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+}
+
+interface FaviconAvatarProps {
+    author: string;
+    source: string | null;
+}
+
+function FaviconAvatar({ author, source }: FaviconAvatarProps) {
+    const [faviconFailed, setFaviconFailed] = useState(false);
+    const initials = getInitials(author);
+    const bgColor = authorColor(author);
+
+    if (!source) {
+        // No domain, always show initials
+        return (
+            <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white" style={{ backgroundColor: bgColor }}>
+                {initials}
+            </div>
+        );
+    }
+
+    const domain = source.replace(/^https?:\/\//, "").split("/")[0];
+    const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+
+    if (faviconFailed) {
+        return (
+            <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white" style={{ backgroundColor: bgColor }}>
+                {initials}
+            </div>
+        );
+    }
+
+    return (
+        <img
+            src={faviconUrl}
+            alt={author}
+            className="w-8 h-8 rounded-full object-cover shrink-0 bg-white/5"
+            onError={() => setFaviconFailed(true)}
         />
     );
 }
@@ -25,6 +102,7 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [segment, setSegment] = useState<SegmentResponse | null>(null);
     const [loading, setLoading] = useState(true);
+    const [heroFailed, setHeroFailed] = useState(false);
     const [startTime, setStartTime] = useState<number>(Date.now());
     const [wordsRead, setWordsRead] = useState(0);
     const [showEndCard, setShowEndCard] = useState(false);
@@ -86,6 +164,7 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
         try {
             const data = await getSegment(currentItem.content_id, currentItem.segment_id);
             setSegment(data);
+            setHeroFailed(false);
             setStartTime(Date.now());
             setWordsRead(0);
             scrollRef.current?.scrollTo(0, 0);
@@ -184,7 +263,7 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
     if (!currentItem) return null;
 
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#1a1710] text-[#f1f5f9]/90" ref={scrollRef}>
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#1c1c1c] text-[#f2f2f0]" ref={scrollRef}>
             {/* Top Session Progress Bar */}
             <div className="fixed top-0 left-0 w-full z-50">
                 <div className="h-[2px] w-full bg-accent/10">
@@ -196,7 +275,7 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
             </div>
 
             {/* Floating Nav */}
-            <nav className="fixed top-0 left-0 w-full px-6 py-5 flex justify-between items-center z-40 bg-gradient-to-b from-[#1a1710] via-[#1a1710]/80 to-transparent pointer-events-none">
+            <nav className="fixed top-0 left-0 w-full px-6 py-5 flex justify-between items-center z-40 bg-gradient-to-b from-[#1c1c1c] via-[#1c1c1c]/80 to-transparent pointer-events-none">
                 <div className="flex items-center gap-4 pointer-events-auto">
                     <span className="text-xs uppercase tracking-[0.2em] font-medium text-accent/50">TimeRead</span>
                     <span className="text-accent/20">·</span>
@@ -219,45 +298,80 @@ export default function Reader({ items, onEndSession }: ReaderProps) {
                     </div>
                 ) : segment ? (
                     <article className="w-full max-w-[680px] mx-auto">
+                        {/* Hero image — first segment only, hidden if null or load fails */}
+                        {segment.cover_image && !heroFailed && segment.segment_index === 0 && (
+                            <div className="w-full aspect-video -mx-6 mb-10 overflow-hidden" style={{ width: "calc(100% + 3rem)" }}>
+                                <img
+                                    src={segment.cover_image}
+                                    alt={segment.title}
+                                    className="w-full h-full object-cover"
+                                    loading="eager"
+                                    onError={() => setHeroFailed(true)}
+                                />
+                            </div>
+                        )}
+
                         {/* Article Header */}
-                        <header className="mb-12">
-                            <div className="flex items-center gap-3 mb-8 flex-wrap">
-                                {segment.source && (
-                                    <span className="text-[10px] uppercase tracking-[0.25em] font-semibold text-accent/70 py-1 px-2.5 border border-accent/20 rounded">
+                        <header className="mb-10">
+                            {/* Source badge */}
+                            {segment.source && (
+                                <div className="mb-4">
+                                    <span className="text-[10px] uppercase tracking-[0.25em] font-semibold text-accent/60">
                                         {segment.source}
                                     </span>
-                                )}
-                                <span className="text-xs text-accent/40">{Math.round(currentItem.estimated_time)} min read</span>
-                                {isPartialChunk && (
-                                    <span className="text-[10px] uppercase tracking-[0.2em] text-accent/30 py-1 px-2 border border-accent/10 rounded">
-                                        partial
-                                    </span>
-                                )}
-                                {segment.total_segments > 1 && (
-                                    <span className="text-xs text-accent/30">· Part {segment.segment_index + 1} of {segment.total_segments}</span>
-                                )}
-                            </div>
+                                    {segment.total_segments > 1 && (
+                                        <span className="text-[10px] text-accent/30 ml-3">· Part {segment.segment_index + 1} of {segment.total_segments}</span>
+                                    )}
+                                </div>
+                            )}
 
-                            <h1 className="text-4xl md:text-5xl font-bold text-slate-100 leading-[1.2] mb-8 tracking-tight" style={{ fontFamily: "var(--font-reader)" }}>
+                            {/* Title */}
+                            <h1 className="text-4xl md:text-5xl font-bold text-[#f2f2f0] leading-[1.15] mb-6 tracking-tight" style={{ fontFamily: "var(--font-reader)" }}>
                                 {segment.title}
                             </h1>
 
+                            {/* Byline */}
                             {segment.author && (
-                                <div className="flex items-center gap-3 py-5 border-y border-accent/10">
-                                    <div className="w-9 h-9 rounded-full bg-accent/15 flex items-center justify-center shrink-0">
-                                        <span className="material-symbols-outlined text-accent/40 text-xl">person</span>
+                                <div className="flex items-center gap-3 py-4 border-y border-white/10">
+                                    <FaviconAvatar author={segment.author} source={segment.source} />
+                                    <div className="flex items-center gap-1.5 text-sm text-[#f2f2f0]/60 flex-wrap">
+                                        <span className="font-medium text-[#f2f2f0]/80">{segment.author}</span>
+                                        {segment.publish_date && (
+                                            <>
+                                                <span className="text-[#f2f2f0]/30">·</span>
+                                                <span>{new Date(segment.publish_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                                            </>
+                                        )}
+                                        <span className="text-[#f2f2f0]/30">·</span>
+                                        <span>{Math.round(currentItem.estimated_time)} min read</span>
+                                        {isPartialChunk && (
+                                            <>
+                                                <span className="text-[#f2f2f0]/30">·</span>
+                                                <span className="text-[10px] uppercase tracking-[0.2em] text-accent/40">partial</span>
+                                            </>
+                                        )}
                                     </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-slate-200">{segment.author}</p>
-                                        <p className="text-xs text-accent/40">Author</p>
-                                    </div>
+                                </div>
+                            )}
+                            {/* Byline without author (still show date + read time) */}
+                            {!segment.author && (
+                                <div className="flex items-center gap-2 text-sm text-[#f2f2f0]/50">
+                                    {segment.publish_date && (
+                                        <>
+                                            <span>{new Date(segment.publish_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                                            <span className="text-[#f2f2f0]/20">·</span>
+                                        </>
+                                    )}
+                                    <span>{Math.round(currentItem.estimated_time)} min read</span>
                                 </div>
                             )}
                         </header>
 
                         {/* Article Body */}
                         <section className="reader-text">
-                            <ReactMarkdown components={{ img: SafeImage }}>
+                            <ReactMarkdown components={{
+                                img: (props) => <SafeImage {...props} baseUrl={segment.url} />
+                            }}>
                                 {visibleParagraphs.join("\n\n")}
                             </ReactMarkdown>
                         </section>
