@@ -60,10 +60,16 @@ def _extract_trafilatura(html: str, url: str) -> Optional[dict]:
             favor_recall=True,
             include_formatting=True,   # bold, italic, headers → Markdown
             include_images=True,        # adds ![alt](url) for inline images
-            include_links=False,        # omit links — distracting mid-read
+            include_links=True,         # keep links so images inside <a> tags survive
         )
         if not text:
             return None
+
+        # Strip plain hyperlinks [text](url) but preserve image markdown ![alt](url).
+        # Many sites wrap images in <a> tags; extracting with include_links=True keeps
+        # the <img> — then we scrub just the link text, leaving images intact.
+        import re as _re
+        text = _re.sub(r'(?<!!)\[([^\]]*)\]\([^)]*\)', r'\1', text)
 
         metadata = trafilatura.extract(
             html, url=url, output_format="json",

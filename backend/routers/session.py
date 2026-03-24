@@ -94,6 +94,41 @@ def get_content_segments(content_id: uuid.UUID, db: Session = Depends(get_db)):
     )
 
 
+@router.post("/content/{content_id}/re-extract")
+def re_extract_metadata(content_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Re-fetch a content item's URL and update cover_image + publish_date.
+
+    Does NOT re-segment or re-embed — only refreshes metadata fields that may
+    have been NULL because the article was ingested before those columns existed.
+    Safe to call on any ready article.
+    """
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+    if content.content_type == "pdf_report":
+        raise HTTPException(status_code=400, detail="PDFs do not have extractable metadata")
+
+    from services.extractor import fetch_and_extract, ExtractionError
+    try:
+        result = fetch_and_extract(content.url, content.content_type)
+    except ExtractionError as e:
+        raise HTTPException(status_code=422, detail=f"Re-extraction failed: {e}")
+
+    updated: list[str] = []
+    if result.get("cover_image") and not content.cover_image:
+        content.cover_image = result["cover_image"]
+        updated.append("cover_image")
+    if result.get("publish_date") and not content.publish_date:
+        content.publish_date = result["publish_date"]
+        updated.append("publish_date")
+    if result.get("author") and not content.author:
+        content.author = result["author"]
+        updated.append("author")
+
+    db.commit()
+    return {"ok": True, "updated": updated, "content_id": str(content_id)}
+
+
 @router.post("/session/track", response_model=TrackResponse)
 def track_reading(req: TrackRequest, db: Session = Depends(get_db)):
     """Record reading progress for a segment."""
