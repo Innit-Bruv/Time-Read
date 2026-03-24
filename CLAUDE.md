@@ -60,6 +60,21 @@ The system has three layers that talk through a single internal API secret:
 - PWA share target must use `POST` + `application/x-www-form-urlencoded`
 - New files go in `frontend/`, `backend/`, or `extension/` — never in the root
 
+## Deploy Configuration (configured by /setup-deploy)
+- Platform: Vercel (frontend) + Railway (backend)
+- Production URL: https://timeread.vercel.app
+- Deploy workflow: auto-deploy on push to main
+- Deploy status command: HTTP health check
+- Merge method: merge
+- Project type: web app
+- Post-deploy health check: https://timeread.vercel.app
+
+### Custom deploy hooks
+- Pre-merge: none
+- Deploy trigger: automatic on push to main (Vercel picks up GitHub push)
+- Deploy status: poll production URL
+- Health check: https://timeread.vercel.app
+
 ## gstack
 
 Use `/browse` from gstack for all web browsing. Never use `mcp__claude-in-chrome__*` tools.
