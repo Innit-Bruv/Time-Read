@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import type { ComponentPropsWithoutRef } from "react";
-import { RecommendItem, getSegment, trackReading, markFinished, SegmentResponse } from "@/lib/api";
+import { RecommendItem, getSegment, getContentSegments, trackReading, markFinished, SegmentResponse } from "@/lib/api";
 import { useChunkMode } from "@/hooks/useChunkMode";
 
 interface SafeImageProps extends ComponentPropsWithoutRef<"img"> {
@@ -102,7 +102,8 @@ interface ReaderProps {
     onRequestRound2?: () => Promise<void>;
 }
 
-export default function Reader({ items, onEndSession, chunkMode = false, timeBudget = 0, onRequestRound2 }: ReaderProps) {
+export default function Reader({ items: initialItems, onEndSession, chunkMode = false, timeBudget = 0, onRequestRound2 }: ReaderProps) {
+    const [liveItems, setLiveItems] = useState<RecommendItem[]>(initialItems);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [segment, setSegment] = useState<SegmentResponse | null>(null);
     const [loading, setLoading] = useState(true);
@@ -112,22 +113,22 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
     const [showEndCard, setShowEndCard] = useState(false);
     const [round2Loading, setRound2Loading] = useState(false);
     const [finishLoading, setFinishLoading] = useState(false);
-    const chunk = useChunkMode(items, timeBudget);
+    const chunk = useChunkMode(liveItems, timeBudget);
     const scrollRef = useRef<HTMLDivElement>(null);
     const rafRef = useRef<number | null>(null);
 
     // Effective paragraph bounds — initialized from item, but overrideable for
     // "Continue Reading →" within the same segment after a partial chunk.
     const [effectiveStart, setEffectiveStart] = useState<number>(
-        items[0]?.paragraph_start ?? 0
+        liveItems[0]?.paragraph_start ?? 0
     );
     const [effectiveEnd, setEffectiveEnd] = useState<number | null | undefined>(
-        items[0]?.paragraph_end
+        liveItems[0]?.paragraph_end
     );
 
-    const currentItem = items[currentIndex];
-    const totalTime = items.reduce((sum, i) => sum + i.estimated_time, 0);
-    const completedTime = items.slice(0, currentIndex).reduce((sum, i) => sum + i.estimated_time, 0);
+    const currentItem = liveItems[currentIndex];
+    const totalTime = liveItems.reduce((sum, i) => sum + i.estimated_time, 0);
+    const completedTime = liveItems.slice(0, currentIndex).reduce((sum, i) => sum + i.estimated_time, 0);
     const sessionProgress = totalTime > 0 ? completedTime / totalTime : 0;
     const timeRemaining = totalTime - completedTime;
 
@@ -245,7 +246,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
 
     const handleNext = async () => {
         await handleTrack(true);
-        if (currentIndex < items.length - 1) {
+        if (currentIndex < liveItems.length - 1) {
             setCurrentIndex(currentIndex + 1);
         } else {
             onEndSession();
@@ -278,7 +279,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
     // Chunk mode: "Next chunk" — save position and move to next article.
     const handleChunkNext = async () => {
         await handleTrack(false); // save paragraph_end, not completed
-        if (currentIndex < items.length - 1) {
+        if (currentIndex < liveItems.length - 1) {
             setCurrentIndex(currentIndex + 1);
         }
         // If on last chunk, the end card handles Round 2 / End Session
@@ -311,10 +312,44 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
         }
     };
 
-    const isLastChunk = chunkMode && currentIndex === items.length - 1;
+    // Continue reading: load remaining segments of current article into liveItems
+    const [continueLoading, setContinueLoading] = useState(false);
+
+    const handleContinueArticle = async () => {
+        if (!currentItem || !segment) return;
+        await handleTrack(true); // mark current segment as completed
+        setContinueLoading(true);
+        try {
+            const res = await getContentSegments(currentItem.content_id);
+            // Get segments after the current one
+            const remaining = res.items.filter(
+                (i: RecommendItem) => i.segment_index > segment.segment_index
+            );
+            if (remaining.length > 0) {
+                // Replace liveItems with remaining segments (switch to archive-like mode)
+                setLiveItems(remaining);
+                setCurrentIndex(0);
+                setEffectiveStart(0);
+                setEffectiveEnd(null);
+                setStartTime(Date.now());
+                setWordsRead(0);
+                setShowEndCard(false);
+                scrollRef.current?.scrollTo(0, 0);
+            }
+        } catch (err) {
+            console.error("Failed to load remaining segments:", err);
+        } finally {
+            setContinueLoading(false);
+        }
+    };
+
+    const isLastChunk = chunkMode && currentIndex === liveItems.length - 1;
 
     // Archive mode: all items belong to the same article (segments passed directly from archive)
-    const isArchiveMode = items.length > 1 && items.every(i => i.content_id === items[0]?.content_id);
+    const isArchiveMode = liveItems.length > 1 && liveItems.every(i => i.content_id === liveItems[0]?.content_id);
+
+    // Whether the current article has more segments beyond this one
+    const hasMoreSegments = segment != null && segment.segment_index < segment.total_segments - 1;
 
     if (!currentItem) return null;
 
@@ -338,7 +373,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                         <>
                             <span className="text-accent/20">·</span>
                             <span className="text-[10px] uppercase tracking-widest text-accent/40">
-                                {currentIndex + 1} of {items.length}
+                                {currentIndex + 1} of {liveItems.length}
                             </span>
                         </>
                     )}
@@ -441,7 +476,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                                     <>
                                         <div className="text-center mb-2">
                                             <p className="text-[10px] uppercase tracking-[0.3em] text-accent/40 mb-2">
-                                                Article {currentIndex + 1} of {items.length}
+                                                Article {currentIndex + 1} of {liveItems.length}
                                             </p>
                                             <p className="text-accent font-bold text-2xl leading-snug" style={{ fontFamily: "var(--font-reader)" }}>
                                                 {isLastChunk ? "You've sampled all articles!" : "Chunk complete"}
@@ -485,7 +520,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                                                     onClick={handleChunkNext}
                                                     className="w-full bg-accent/10 border border-accent/20 text-accent py-4 rounded-xl font-bold uppercase tracking-[0.12em] transition-all hover:bg-accent/20 flex justify-center items-center gap-2"
                                                 >
-                                                    Next: {items[currentIndex + 1]?.title.slice(0, 30)}{(items[currentIndex + 1]?.title.length ?? 0) > 30 ? "…" : ""} →
+                                                    Next: {liveItems[currentIndex + 1]?.title.slice(0, 30)}{(liveItems[currentIndex + 1]?.title.length ?? 0) > 30 ? "…" : ""} →
                                                 </button>
                                                 <button
                                                     onClick={handleEndSession}
@@ -538,7 +573,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                                         </div>
 
                                         {/* Archive mode: next segment of the same article */}
-                                        {isArchiveMode && currentIndex < items.length - 1 ? (
+                                        {isArchiveMode && currentIndex < liveItems.length - 1 ? (
                                             <div className="w-full max-w-sm space-y-3">
                                                 <button
                                                     onClick={handleNext}
@@ -573,14 +608,39 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                                                     {finishLoading ? "Saving…" : "Done with this article — don't show again"}
                                                 </button>
                                             </div>
-                                        ) : currentIndex < items.length - 1 ? (
+                                        ) : hasMoreSegments ? (
+                                            // Normal session: article has more segments — offer to continue
+                                            <div className="w-full max-w-sm space-y-3">
+                                                <button
+                                                    onClick={handleContinueArticle}
+                                                    disabled={continueLoading}
+                                                    className="w-full bg-accent text-[#0f0f0f] py-4 rounded-xl font-bold uppercase tracking-[0.15em] transition-all hover:opacity-90 flex justify-center items-center gap-2 disabled:opacity-40"
+                                                >
+                                                    {continueLoading ? "Loading…" : `Continue Reading · ${segment!.total_segments - segment!.segment_index - 1} part${segment!.total_segments - segment!.segment_index - 1 > 1 ? "s" : ""} left`}
+                                                </button>
+                                                {currentIndex < liveItems.length - 1 && (
+                                                    <button
+                                                        onClick={handleNext}
+                                                        className="w-full bg-accent/10 border border-accent/20 text-accent py-4 rounded-xl font-bold uppercase tracking-[0.12em] transition-all hover:bg-accent/20 flex justify-center items-center gap-2"
+                                                    >
+                                                        Next: {liveItems[currentIndex + 1].title.slice(0, 30)}{liveItems[currentIndex + 1].title.length > 30 ? "…" : ""} →
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={handleEndSession}
+                                                    className="w-full py-3 text-[11px] uppercase tracking-widest text-accent/40 hover:text-accent border border-accent/10 hover:border-accent/30 rounded-xl transition-all"
+                                                >
+                                                    Exit
+                                                </button>
+                                            </div>
+                                        ) : currentIndex < liveItems.length - 1 ? (
                                             // Normal session: next article
                                             <div className="w-full max-w-sm space-y-3">
                                                 <button
                                                     onClick={handleNext}
                                                     className="w-full bg-accent/10 border border-accent/20 text-accent py-4 rounded-xl font-bold uppercase tracking-[0.12em] transition-all hover:bg-accent/20 flex justify-center items-center gap-2"
                                                 >
-                                                    Next: {items[currentIndex + 1].title.slice(0, 35)}{items[currentIndex + 1].title.length > 35 ? "…" : ""} →
+                                                    Next: {liveItems[currentIndex + 1].title.slice(0, 35)}{liveItems[currentIndex + 1].title.length > 35 ? "…" : ""} →
                                                 </button>
                                                 <button
                                                     onClick={handleMarkFinished}
@@ -627,7 +687,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                 chunk.isChunkMode ? (
                     // Chunk mode: N article progress pills
                     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 bg-[#0f0e0c]/95 backdrop-blur-sm border border-accent/10 rounded-full shadow-xl">
-                        {items.map((_, i) => (
+                        {liveItems.map((_, i) => (
                             <div key={i} className="relative h-1 w-8 bg-accent/15 rounded-full overflow-hidden">
                                 <div
                                     className="absolute inset-y-0 left-0 bg-accent rounded-full transition-all duration-300"
@@ -639,7 +699,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                         ))}
                         <div className="h-3 w-px bg-accent/20 mx-1" />
                         <span className="text-[10px] text-accent/50 uppercase tracking-widest">
-                            {currentIndex + 1}/{items.length}
+                            {currentIndex + 1}/{liveItems.length}
                         </span>
                     </div>
                 ) : (
