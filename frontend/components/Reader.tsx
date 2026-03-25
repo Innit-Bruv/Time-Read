@@ -443,7 +443,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                                             onClick={handleContinuePartial}
                                             className="w-full max-w-sm bg-accent text-[#0f0f0f] py-4 rounded-xl font-bold uppercase tracking-[0.15em] transition-all hover:opacity-90"
                                         >
-                                            Read Full Article
+                                            Read Full Article{remainingSegmentMinutes > 0 ? ` · ~${remainingSegmentMinutes} min left` : ""}
                                         </button>
 
                                         {isLastChunk ? (
@@ -501,7 +501,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                                             onClick={handleContinuePartial}
                                             className="w-full max-w-sm bg-accent text-[#0f0f0f] py-4 rounded-xl font-bold uppercase tracking-[0.15em] transition-all hover:opacity-90 flex justify-center items-center gap-2"
                                         >
-                                            Continue Reading →
+                                            Continue Reading{remainingSegmentMinutes > 0 ? ` · ~${remainingSegmentMinutes} min left` : ""} →
                                         </button>
                                         <button
                                             onClick={handleSaveAndExit}

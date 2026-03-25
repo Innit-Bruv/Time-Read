@@ -79,12 +79,15 @@ def generate_pack(
                 items.append(seg_info)
                 remaining_time -= seg_info["estimated_time"]
 
-    # 3. Content type filtered (no topic)
-    if remaining_time > 0 and content_type and not topic:
+    # 3. Content type filtered (with or without topic)
+    if remaining_time > 0 and content_type:
         used_segment_ids = {item["segment_id"] for item in items}
         typed = _get_typed_segments(
             db, content_type, used_segment_ids, completed_ids, finished_content_ids, seg_count_cache
         )
+        # If topic provided, keyword-sort typed results so title matches surface first
+        if topic:
+            typed = _keyword_sort(typed, topic)
         for seg_info in typed:
             if remaining_time <= 0:
                 break
@@ -92,12 +95,14 @@ def generate_pack(
                 items.append(seg_info)
                 remaining_time -= seg_info["estimated_time"]
 
-    # 4. Oldest unread (fill remaining)
+    # 4. Oldest unread (fill remaining) — keyword-sorted when topic is provided
     if remaining_time > 0:
         used_segment_ids = {item["segment_id"] for item in items}
         oldest = _get_oldest_unread_segments(
             db, used_segment_ids, completed_ids, finished_content_ids, seg_count_cache
         )
+        if topic:
+            oldest = _keyword_sort(oldest, topic)
         for seg_info in oldest:
             if remaining_time <= 0:
                 break
@@ -477,6 +482,25 @@ def _try_partial_slice_fallback(
     item["estimated_time"] = partial["estimated_time"]
     item["paragraph_end"] = partial["paragraph_end"]
     return item
+
+
+def _keyword_sort(items: list[dict], topic: str) -> list[dict]:
+    """Sort recommendation items so title/source keyword matches surface first.
+
+    Scores each item by how many topic words appear in its title or source.
+    Preserves original order within equal-score groups (stable sort).
+    Used as a lightweight fallback/supplement when vector search is unavailable
+    or when topic filtering should apply across non-embedding tiers.
+    """
+    topic_words = [w.lower() for w in topic.split() if len(w) > 2]
+    if not topic_words:
+        return items
+
+    def score(item: dict) -> int:
+        haystack = f"{item.get('title', '')} {item.get('source', '')}".lower()
+        return sum(1 for w in topic_words if w in haystack)
+
+    return sorted(items, key=score, reverse=True)
 
 
 def _bulk_populate_cache(db: Session, segments: list, cache: dict) -> None:

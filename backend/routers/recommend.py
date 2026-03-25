@@ -58,9 +58,12 @@ def recommend(req: RecommendRequest, db: Session = Depends(get_db)):
             author=item["author"],
             content_type=item["content_type"],
             estimated_time=item["estimated_time"],
+            article_total_time=item.get("article_total_time", 0),
             segment_index=item["segment_index"],
             total_segments=item["total_segments"],
             is_continuation=item["is_continuation"],
+            paragraph_start=item.get("paragraph_start", 0),
+            paragraph_end=item.get("paragraph_end"),
         )
         for item in pack["items"]
     ]
