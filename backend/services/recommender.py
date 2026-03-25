@@ -135,9 +135,9 @@ def generate_pack(
     # Fix article_total_time: sum all segment times for each article in the pack.
     # content.estimated_time may be 0 for older articles, and segment.estimated_time
     # is only one chunk — neither reflects the true full-article reading time.
-    content_ids_in_pack = [item["content_id"] for item in items]
+    # Must pass UUID objects (not strings) for the IN filter to match the UUID column.
+    content_ids_in_pack = [uuid.UUID(item["content_id"]) for item in items]
     if content_ids_in_pack:
-        from sqlalchemy import text as _text
         time_sum_rows = (
             db.query(Segment.content_id, func.sum(Segment.estimated_time))
             .filter(Segment.content_id.in_(content_ids_in_pack))
