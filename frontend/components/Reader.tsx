@@ -134,9 +134,17 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
     // Whether the current chunk is a partial slice (not the full segment).
     const isPartialChunk = effectiveEnd != null;
 
-    // For partial segments, word count covers only the visible slice of paragraphs.
+    // Smart paragraph split: try \n\n first, fall back to \n for text stored
+    // with single-newline separators. Mirrors backend split_paragraphs().
     const allParagraphs = segment
-        ? segment.text.split("\n\n").filter((p) => p.trim())
+        ? (() => {
+            const byDouble = segment.text.split("\n\n").filter((p: string) => p.trim());
+            if (byDouble.length > 1) return byDouble;
+            const bySingle = segment.text.split("\n").filter((p: string) => p.trim());
+            if (bySingle.length > 1) return bySingle;
+            const stripped = segment.text.trim();
+            return stripped ? [stripped] : [];
+          })()
         : [];
     const visibleParagraphs = allParagraphs.slice(
         effectiveStart,

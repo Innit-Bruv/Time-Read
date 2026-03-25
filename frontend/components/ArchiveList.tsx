@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { ArchiveItem, getArchive } from "@/lib/api";
 
 interface ArchiveListProps {
     onSelectItem?: (item: ArchiveItem) => void;
     loadingContentId?: string | null;
 }
+
+const PAGE_SIZE = 20;
 
 const CONTENT_TYPE_FILTERS = [
     { label: "All", value: "" },
@@ -55,16 +57,23 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
     const [contentType, setContentType] = useState("");
     const [sort, setSort] = useState("recent");
     const [loading, setLoading] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const sentinelRef = useRef<HTMLDivElement>(null);
 
-    const loadArchive = async () => {
+    const hasMore = items.length < total;
+
+    // Initial load and filter/sort changes — reset to page 1
+    const loadArchive = useCallback(async (resetPage?: boolean) => {
+        const targetPage = resetPage ? 1 : page;
+        if (resetPage) setPage(1);
         setLoading(true);
         try {
             const data = await getArchive({
                 search: search || undefined,
                 content_type: contentType || undefined,
                 sort,
-                page,
-                limit: 20,
+                page: targetPage,
+                limit: PAGE_SIZE,
             });
             setItems(data.items);
             setTotal(data.total);
@@ -73,20 +82,59 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
         } finally {
             setLoading(false);
         }
-    };
+    }, [search, contentType, sort, page]);
 
+    // Load next page and append
+    const loadMore = useCallback(async () => {
+        if (loadingMore || !hasMore) return;
+        const nextPage = page + 1;
+        setLoadingMore(true);
+        try {
+            const data = await getArchive({
+                search: search || undefined,
+                content_type: contentType || undefined,
+                sort,
+                page: nextPage,
+                limit: PAGE_SIZE,
+            });
+            setItems(prev => [...prev, ...data.items]);
+            setTotal(data.total);
+            setPage(nextPage);
+        } catch (err) {
+            console.error("Failed to load more:", err);
+        } finally {
+            setLoadingMore(false);
+        }
+    }, [loadingMore, hasMore, page, search, contentType, sort]);
+
+    // Initial load
     useEffect(() => {
-        loadArchive();
+        loadArchive(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, contentType, sort]);
+    }, [contentType, sort]);
+
+    // Intersection Observer for infinite scroll
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
+                    loadMore();
+                }
+            },
+            { rootMargin: "200px" }
+        );
+
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [hasMore, loading, loadingMore, loadMore]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
-        setPage(1);
-        loadArchive();
+        loadArchive(true);
     };
-
-    const totalPages = Math.ceil(total / 20);
 
     return (
         <div className="space-y-6">
@@ -109,7 +157,7 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
                     <button
                         key={filter.value}
                         className={`pill text-xs ${contentType === filter.value ? "active" : ""}`}
-                        onClick={() => { setContentType(filter.value); setPage(1); }}
+                        onClick={() => setContentType(filter.value)}
                     >
                         {filter.label}
                     </button>
@@ -119,7 +167,7 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
                     <button
                         key={opt.value}
                         className={`pill text-xs ${sort === opt.value ? "active" : ""}`}
-                        onClick={() => { setSort(opt.value); setPage(1); }}
+                        onClick={() => setSort(opt.value)}
                     >
                         {opt.label}
                     </button>
@@ -214,27 +262,10 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
                 </div>
             )}
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-                <div className="flex justify-center gap-2 pt-4">
-                    <button
-                        className="pill text-xs"
-                        disabled={page <= 1}
-                        onClick={() => setPage(page - 1)}
-                    >
-                        ← Prev
-                    </button>
-                    <span className="text-sm text-muted flex items-center">
-                        {page} / {totalPages}
-                    </span>
-                    <button
-                        className="pill text-xs"
-                        disabled={page >= totalPages}
-                        onClick={() => setPage(page + 1)}
-                    >
-                        Next →
-                    </button>
-                </div>
+            {/* Infinite scroll sentinel */}
+            <div ref={sentinelRef} className="h-1" />
+            {loadingMore && (
+                <div className="text-center text-muted py-4">Loading more...</div>
             )}
         </div>
     );

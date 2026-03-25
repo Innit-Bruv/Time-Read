@@ -14,6 +14,7 @@ from sqlalchemy import func, and_
 
 from models.content import Content, Segment, ReadingSession, UserStats
 from services.embedder import generate_embedding
+from services.text_utils import split_paragraphs
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +191,7 @@ def _remaining_segment_time(segment: Segment, paragraph_start: int, reading_spee
     Always counts actual words from text — never uses the stored estimated_time
     which may be stale or computed with incorrect reading speed.
     """
-    paragraphs = [p.strip() for p in segment.text.split("\n\n") if p.strip()]
+    paragraphs = split_paragraphs(segment.text)
     remaining = paragraphs[paragraph_start:]
     if not remaining:
         return 0.0
@@ -213,7 +214,7 @@ def _partial_slice(
     Returns dict: {estimated_time, paragraph_start, paragraph_end (exclusive)}
     or None if the segment has no usable text.
     """
-    paragraphs = [p.strip() for p in segment.text.split("\n\n") if p.strip()]
+    paragraphs = split_paragraphs(segment.text)
     if not paragraphs or start_para >= len(paragraphs):
         return None
 

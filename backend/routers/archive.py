@@ -18,7 +18,7 @@ def get_archive(
     content_type: str = Query(default="", description="Filter by content type"),
     sort: str = Query(default="recent", description="Sort order: recent|oldest|unread"),
     page: int = Query(default=1, ge=1),
-    limit: int = Query(default=20, ge=1, le=50),
+    limit: int = Query(default=20, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
     """Browse saved content with search, filtering, and pagination."""

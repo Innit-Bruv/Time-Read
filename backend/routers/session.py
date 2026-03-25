@@ -9,6 +9,7 @@ from auth import verify_api_key
 from db.database import get_db
 from models.content import Content, Segment, ReadingSession, UserStats
 from models.schemas import TrackRequest, TrackResponse, SegmentResponse, RecommendItem, RecommendResponse, ManualSessionRequest
+from services.text_utils import split_paragraphs
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -167,7 +168,7 @@ def manual_session(req: ManualSessionRequest, db: Session = Depends(get_db)):
             para_start = last_session.paragraph_end
 
         # Split into paragraphs and find chunk boundary
-        paragraphs = [p for p in segment.text.split("\n\n") if p.strip()]
+        paragraphs = split_paragraphs(segment.text)
         total_paras = len(paragraphs)
 
         if para_start >= total_paras:
