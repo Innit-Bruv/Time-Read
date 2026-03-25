@@ -58,22 +58,20 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
         if (selectedItems.length === 0) return;
         setError("");
 
-        if (selectedItems.length === 1) {
-            // Normal mode — pass item directly, no backend call needed
-            onBeginSession(selectedItems, false, [selectedItems[0].content_id]);
-            return;
-        }
-
-        // Chunk mode — call /session/manual to get equal-time slices
+        // Always route through /session/manual for consistent chunk sizing.
+        // Even single-article selections need proper time-fitted slicing —
+        // the recommender only returns segment 0, but /session/manual computes
+        // the correct paragraph_start/paragraph_end for the time budget.
         setLoading(true);
         try {
             const result = await createManualSession({
                 content_ids: selectedItems.map(i => i.content_id),
                 time_budget: targetTime,
             });
+            const isChunk = selectedItems.length > 1;
             onBeginSession(
                 result.items,
-                true,
+                isChunk,
                 selectedItems.map(i => i.content_id)
             );
         } catch (err: unknown) {

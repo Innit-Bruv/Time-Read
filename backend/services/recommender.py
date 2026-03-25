@@ -190,13 +190,17 @@ def _remaining_segment_time(segment: Segment, paragraph_start: int, reading_spee
 
     Always counts actual words from text — never uses the stored estimated_time
     which may be stale or computed with incorrect reading speed.
+    Uses 200 WPM consistently to match all display-time calculations.
     """
     paragraphs = split_paragraphs(segment.text)
     remaining = paragraphs[paragraph_start:]
     if not remaining:
         return 0.0
     words = sum(len(p.split()) for p in remaining)
-    return round(words / 200, 1)  # 200 WPM — consistent display speed
+    return round(words / 200, 1)
+
+
+DISPLAY_WPM = 200  # all display times use 200 WPM — chunk sizing must match
 
 
 def _partial_slice(
@@ -206,6 +210,10 @@ def _partial_slice(
     start_para: int = 0,
 ) -> Optional[dict]:
     """Slice a segment's paragraphs to fit within remaining_time minutes.
+
+    Uses 200 WPM consistently (matching display-time calculations) regardless
+    of the user's tracked reading speed. This prevents inflated reading speeds
+    from making chunks larger than the requested time budget.
 
     Always returns at least 1 paragraph (the minimum guarantee — even if
     that single paragraph exceeds the budget, we never leave the user with
@@ -218,11 +226,13 @@ def _partial_slice(
     if not paragraphs or start_para >= len(paragraphs):
         return None
 
+    word_budget = remaining_time * DISPLAY_WPM  # e.g. 5 min × 200 = 1000 words
+
     selected_end = start_para
     words = 0
     for i in range(start_para, len(paragraphs)):
         para_words = len(paragraphs[i].split())
-        if words > 0 and (words + para_words) / reading_speed > remaining_time:
+        if words > 0 and words + para_words > word_budget:
             break  # adding this paragraph would exceed budget
         words += para_words
         selected_end = i + 1
@@ -233,7 +243,7 @@ def _partial_slice(
         words = len(paragraphs[start_para].split())
 
     paragraph_end = selected_end if selected_end < len(paragraphs) else None
-    est_time = round(words / reading_speed, 1) if reading_speed else 0.0
+    est_time = round(words / DISPLAY_WPM, 1)
 
     return {
         "estimated_time": est_time,

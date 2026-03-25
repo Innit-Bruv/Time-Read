@@ -121,9 +121,10 @@ def manual_session(req: ManualSessionRequest, db: Session = Depends(get_db)):
     n = len(req.content_ids)
     chunk_minutes = max(1.0, req.time_budget / n)
 
-    user_stats = db.query(UserStats).filter(UserStats.id == 1).first()
-    reading_speed = user_stats.reading_speed if user_stats else 200.0
-    chunk_words = chunk_minutes * reading_speed
+    # Use 200 WPM consistently — matches all display-time calculations.
+    # The user's tracked reading_speed is ignored for chunk sizing to prevent
+    # inflated speeds (from scroll-based tracking) from making chunks too large.
+    chunk_words = chunk_minutes * 200
 
     # Batch-fetch reading history for all first segments (single query)
     # Maps segment_id → last paragraph_end
