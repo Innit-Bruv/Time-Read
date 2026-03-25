@@ -71,7 +71,8 @@ def get_content_segments(content_id: uuid.UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No segments found for this content")
 
     total_segments = len(segments)
-    total_article_time = round(sum(seg.estimated_time for seg in segments), 1)
+    # Use word_count / 200 WPM — same formula as the recommender
+    total_article_time = round(sum(seg.word_count for seg in segments) / 200, 1)
     items = [
         RecommendItem(
             content_id=content.id,
@@ -80,7 +81,7 @@ def get_content_segments(content_id: uuid.UUID, db: Session = Depends(get_db)):
             source=content.source,
             author=content.author,
             content_type=content.content_type,
-            estimated_time=seg.estimated_time,
+            estimated_time=round(seg.word_count / 200, 1),
             article_total_time=total_article_time,
             segment_index=seg.segment_index,
             total_segments=total_segments,
@@ -146,11 +147,11 @@ def manual_session(req: ManualSessionRequest, db: Session = Depends(get_db)):
             .scalar()
         )
 
-        # Full article time = sum of all segment estimated_times
+        # Full article time = sum of word counts / 200 WPM
         article_total_time = round(
-            db.query(func.sum(Segment.estimated_time))
-            .filter(Segment.content_id == content_id)
-            .scalar() or 0,
+            (db.query(func.sum(Segment.word_count))
+             .filter(Segment.content_id == content_id)
+             .scalar() or 0) / 200,
             1,
         )
 

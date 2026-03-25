@@ -21,13 +21,17 @@ function contentTypeLabel(type: string): string {
 }
 
 export default function ReadingPack({ items, targetTime, onBeginSession }: ReadingPackProps) {
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    // Ordered array — preserves the user's tap/click sequence
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
     if (items.length === 0) return null;
 
-    const selectedItems = items.filter(item => selectedIds.has(item.segment_id));
+    // Resolve in selection order, not items[] order
+    const selectedItems = selectedIds
+        .map(id => items.find(item => item.segment_id === id))
+        .filter((item): item is RecommendItem => item !== undefined);
     // Use article_total_time for display — reflects the full article, not just the chunk served
     const selectedTime = selectedItems.reduce((acc, item) => acc + (item.article_total_time ?? item.estimated_time), 0);
     const progressPercent = Math.min(100, (selectedTime / targetTime) * 100);
@@ -43,12 +47,11 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
         (selectedItems[0].article_total_time ?? selectedItems[0].estimated_time) > targetTime;
 
     const toggleSelection = (segmentId: string) => {
-        setSelectedIds(prev => {
-            const next = new Set(prev);
-            if (next.has(segmentId)) next.delete(segmentId);
-            else next.add(segmentId);
-            return next;
-        });
+        setSelectedIds(prev =>
+            prev.includes(segmentId)
+                ? prev.filter(id => id !== segmentId)
+                : [...prev, segmentId]
+        );
     };
 
     const handleBeginSession = async () => {
@@ -116,7 +119,7 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
 
             <div className="space-y-3">
                 {items.map((item) => {
-                    const isSelected = selectedIds.has(item.segment_id);
+                    const isSelected = selectedIds.includes(item.segment_id);
                     return (
                         <div
                             key={item.segment_id}

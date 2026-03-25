@@ -26,104 +26,59 @@ def generate_pack(
     topic: Optional[str] = None,
     content_type: Optional[str] = None,
 ) -> dict:
-    """Generate a reading pack that fits within time_budget minutes.
+    """Return ALL unread, unfinished articles ordered by priority.
 
-    Computes completed segment IDs once upfront (instead of once per tier)
-    to avoid repeated DB round-trips.
-
-    If no full segment fits the remaining budget, falls back to a paragraph-level
-    partial slice of the best available segment — so the user always gets content.
+    The selection pane shows every available article — the AI orders them
+    (unfinished → topic-similar → content-type → oldest) but never filters
+    by time budget. The user picks which articles to read; the time budget
+    determines chunk size when reading, not what's visible.
 
     Returns:
         dict with session_id, total_estimated_time, items[]
     """
     items = []
-    remaining_time = time_budget
 
-    # Get user reading speed
+    # Get user reading speed (used for chunk sizing, not display)
     user_stats = db.query(UserStats).filter(UserStats.id == 1).first()
     reading_speed = int(user_stats.reading_speed) if user_stats else 200
 
-    # Compute completed segment IDs once — reused by all four tiers.
     completed_ids = _get_completed_segment_ids(db)
-
-    # Compute finished content IDs once — excluded from all tiers.
     finished_content_ids = _get_finished_content_ids(db)
-
-    # Fetch paragraph offsets for all unfinished segments once — avoids N+1 in tier 1.
     para_offset_map = _get_paragraph_offset_map(db)
-
-    # Build a lazily-populated segment count cache so _segment_to_item
-    # never fires a per-item COUNT query.
     seg_count_cache: dict = {}
 
-    # 1. Unfinished segments (highest priority)
+    # 1. Unfinished segments (highest priority — in-progress articles first)
     unfinished = _get_unfinished_segments(db, completed_ids, finished_content_ids, para_offset_map, reading_speed)
-    for seg_info in unfinished:
-        if remaining_time <= 0:
-            break
-        if seg_info["estimated_time"] <= remaining_time:
-            items.append(seg_info)
-            remaining_time -= seg_info["estimated_time"]
+    items.extend(unfinished)
 
     # 2. Topic-similar segments (vector similarity)
-    if remaining_time > 0 and topic:
+    if topic:
         used_segment_ids = {item["segment_id"] for item in items}
         similar = _get_topic_similar_segments(
             db, topic, content_type, used_segment_ids, completed_ids, finished_content_ids, seg_count_cache
         )
-        for seg_info in similar:
-            if remaining_time <= 0:
-                break
-            if seg_info["estimated_time"] <= remaining_time:
-                items.append(seg_info)
-                remaining_time -= seg_info["estimated_time"]
+        items.extend(similar)
 
-    # 3. Content type filtered (with or without topic)
-    if remaining_time > 0 and content_type:
+    # 3. Content type filtered
+    if content_type:
         used_segment_ids = {item["segment_id"] for item in items}
         typed = _get_typed_segments(
             db, content_type, used_segment_ids, completed_ids, finished_content_ids, seg_count_cache
         )
-        # If topic provided, keyword-sort typed results so title matches surface first
         if topic:
             typed = _keyword_sort(typed, topic)
-        for seg_info in typed:
-            if remaining_time <= 0:
-                break
-            if seg_info["estimated_time"] <= remaining_time:
-                items.append(seg_info)
-                remaining_time -= seg_info["estimated_time"]
+        items.extend(typed)
 
-    # 4. Oldest unread (fill remaining) — keyword-sorted when topic is provided
-    if remaining_time > 0:
-        used_segment_ids = {item["segment_id"] for item in items}
-        oldest = _get_oldest_unread_segments(
-            db, used_segment_ids, completed_ids, finished_content_ids, seg_count_cache
-        )
-        if topic:
-            oldest = _keyword_sort(oldest, topic)
-        for seg_info in oldest:
-            if remaining_time <= 0:
-                break
-            if seg_info["estimated_time"] <= remaining_time:
-                items.append(seg_info)
-                remaining_time -= seg_info["estimated_time"]
+    # 4. All remaining unread articles (oldest first, keyword-sorted if topic given)
+    used_segment_ids = {item["segment_id"] for item in items}
+    oldest = _get_oldest_unread_segments(
+        db, used_segment_ids, completed_ids, finished_content_ids, seg_count_cache
+    )
+    if topic:
+        oldest = _keyword_sort(oldest, topic)
+    items.extend(oldest)
 
-    # Fallback: if the pack is still empty (every segment exceeds the budget),
-    # slice the best available segment at paragraph boundaries so the user
-    # always gets *something* — even for a 2-minute window.
-    if not items and remaining_time > 0:
-        used_ids = completed_ids
-        partial = _try_partial_slice_fallback(
-            db, remaining_time, reading_speed, used_ids, finished_content_ids, para_offset_map, seg_count_cache
-        )
-        if partial:
-            items.append(partial)
-
-    # Dedup: each article (content_id) should appear at most once.
-    # The recommender operates on segments internally, but the selection pane
-    # shows articles. Keep the first (highest-priority) segment per article.
+    # Dedup: one article per content_id, keeping first (highest-priority) occurrence.
     seen_content_ids: set = set()
     deduped = []
     for item in items:
@@ -132,32 +87,31 @@ def generate_pack(
             deduped.append(item)
     items = deduped
 
-    # Fix article_total_time: sum all segment times for each article in the pack.
-    # content.estimated_time may be 0 for older articles, and segment.estimated_time
-    # is only one chunk — neither reflects the true full-article reading time.
-    # Must pass UUID objects (not strings) for the IN filter to match the UUID column.
+    # Compute article_total_time as SUM(word_count)/200 across all segments.
+    # This is the ground-truth display time — independent of whatever estimated_time
+    # was stored at ingest (which may be stale or computed with wrong speed).
     content_ids_in_pack = [uuid.UUID(item["content_id"]) for item in items]
     if content_ids_in_pack:
-        time_sum_rows = (
-            db.query(Segment.content_id, func.sum(Segment.estimated_time))
+        word_sum_rows = (
+            db.query(Segment.content_id, func.sum(Segment.word_count))
             .filter(Segment.content_id.in_(content_ids_in_pack))
             .group_by(Segment.content_id)
             .all()
         )
-        time_sum_map = {str(cid): float(total or 0) for cid, total in time_sum_rows}
+        word_sum_map = {row[0]: int(row[1] or 0) for row in word_sum_rows}
         for item in items:
-            item["article_total_time"] = round(
-                time_sum_map.get(item["content_id"], item["estimated_time"]), 1
-            )
+            total_words = word_sum_map.get(uuid.UUID(item["content_id"]), 0)
+            item["article_total_time"] = round(total_words / 200, 1) if total_words else item["estimated_time"]
 
-    # Cap each item to MAX_CHUNK_MINUTES — any segment longer than this gets a
-    # paragraph-level partial slice so the Reader shows the "Want to finish?" CTA.
+    # Cap each item's chunk to min(time_budget, MAX_CHUNK_MINUTES).
+    # This controls how much is served in a single session for single-article reads.
+    chunk_cap = min(time_budget, MAX_CHUNK_MINUTES)
     for i, item in enumerate(items):
-        if item["estimated_time"] > MAX_CHUNK_MINUTES:
+        if item["estimated_time"] > chunk_cap:
             seg = db.query(Segment).filter(Segment.id == item["segment_id"]).first()
             if seg:
                 start = item.get("paragraph_start", 0) or 0
-                partial = _partial_slice(seg, MAX_CHUNK_MINUTES, reading_speed, start)
+                partial = _partial_slice(seg, chunk_cap, reading_speed, start)
                 if partial:
                     items[i] = {
                         **item,
@@ -231,15 +185,17 @@ def _get_segment_count(db: Session, content_id, cache: dict) -> int:
 
 
 def _remaining_segment_time(segment: Segment, paragraph_start: int, reading_speed: int) -> float:
-    """Compute estimated reading time for paragraphs from paragraph_start to end."""
-    if not paragraph_start:
-        return segment.estimated_time
+    """Compute estimated reading time for paragraphs from paragraph_start to end.
+
+    Always counts actual words from text — never uses the stored estimated_time
+    which may be stale or computed with incorrect reading speed.
+    """
     paragraphs = [p.strip() for p in segment.text.split("\n\n") if p.strip()]
     remaining = paragraphs[paragraph_start:]
     if not remaining:
         return 0.0
     words = sum(len(p.split()) for p in remaining)
-    return round(words / reading_speed, 1) if reading_speed else 0.0
+    return round(words / 200, 1)  # 200 WPM — consistent display speed
 
 
 def _partial_slice(
@@ -546,6 +502,8 @@ def _segment_to_item(
 ) -> dict:
     """Convert a Segment + Content to a recommendation item dict."""
     total_segments = seg_count_cache.get(content.id, 0)
+    # Compute from word count at 200 WPM — more reliable than stored estimated_time
+    estimated_time = round((segment.word_count or 0) / 200, 1)
     return {
         "content_id": str(content.id),
         "segment_id": str(segment.id),
@@ -553,8 +511,8 @@ def _segment_to_item(
         "source": content.source,
         "author": content.author,
         "content_type": content.content_type,
-        "estimated_time": segment.estimated_time,
-        "article_total_time": content.estimated_time or segment.estimated_time,
+        "estimated_time": estimated_time,
+        "article_total_time": estimated_time,  # overwritten by bulk word-count sum after dedup
         "segment_index": segment.segment_index,
         "total_segments": total_segments,
         "is_continuation": segment.segment_index > 0,
