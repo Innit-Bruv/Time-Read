@@ -132,6 +132,24 @@ def generate_pack(
             deduped.append(item)
     items = deduped
 
+    # Fix article_total_time: sum all segment times for each article in the pack.
+    # content.estimated_time may be 0 for older articles, and segment.estimated_time
+    # is only one chunk — neither reflects the true full-article reading time.
+    content_ids_in_pack = [item["content_id"] for item in items]
+    if content_ids_in_pack:
+        from sqlalchemy import text as _text
+        time_sum_rows = (
+            db.query(Segment.content_id, func.sum(Segment.estimated_time))
+            .filter(Segment.content_id.in_(content_ids_in_pack))
+            .group_by(Segment.content_id)
+            .all()
+        )
+        time_sum_map = {str(cid): float(total or 0) for cid, total in time_sum_rows}
+        for item in items:
+            item["article_total_time"] = round(
+                time_sum_map.get(item["content_id"], item["estimated_time"]), 1
+            )
+
     # Cap each item to MAX_CHUNK_MINUTES — any segment longer than this gets a
     # paragraph-level partial slice so the Reader shows the "Want to finish?" CTA.
     for i, item in enumerate(items):

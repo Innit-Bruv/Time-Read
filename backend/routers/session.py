@@ -71,6 +71,7 @@ def get_content_segments(content_id: uuid.UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No segments found for this content")
 
     total_segments = len(segments)
+    total_article_time = round(sum(seg.estimated_time for seg in segments), 1)
     items = [
         RecommendItem(
             content_id=content.id,
@@ -80,6 +81,7 @@ def get_content_segments(content_id: uuid.UUID, db: Session = Depends(get_db)):
             author=content.author,
             content_type=content.content_type,
             estimated_time=seg.estimated_time,
+            article_total_time=total_article_time,
             segment_index=seg.segment_index,
             total_segments=total_segments,
             is_continuation=seg.segment_index > 0,
@@ -89,7 +91,7 @@ def get_content_segments(content_id: uuid.UUID, db: Session = Depends(get_db)):
 
     return RecommendResponse(
         session_id=uuid.uuid4(),
-        total_estimated_time=sum(seg.estimated_time for seg in segments),
+        total_estimated_time=total_article_time,
         items=items,
     )
 
@@ -144,6 +146,14 @@ def manual_session(req: ManualSessionRequest, db: Session = Depends(get_db)):
             .scalar()
         )
 
+        # Full article time = sum of all segment estimated_times
+        article_total_time = round(
+            db.query(func.sum(Segment.estimated_time))
+            .filter(Segment.content_id == content_id)
+            .scalar() or 0,
+            1,
+        )
+
         # Resumption: last paragraph_end for this segment
         last_session = (
             db.query(ReadingSession)
@@ -178,6 +188,7 @@ def manual_session(req: ManualSessionRequest, db: Session = Depends(get_db)):
             author=content.author,
             content_type=content.content_type,
             estimated_time=chunk_minutes,
+            article_total_time=article_total_time,
             segment_index=segment.segment_index,
             total_segments=total_segments,
             is_continuation=para_start > 0,

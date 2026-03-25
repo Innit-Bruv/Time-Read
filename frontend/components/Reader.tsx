@@ -305,6 +305,9 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
 
     const isLastChunk = chunkMode && currentIndex === items.length - 1;
 
+    // Archive mode: all items belong to the same article (segments passed directly from archive)
+    const isArchiveMode = items.length > 1 && items.every(i => i.content_id === items[0]?.content_id);
+
     if (!currentItem) return null;
 
     return (
@@ -323,10 +326,14 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
             <nav className="fixed top-0 left-0 w-full px-6 py-5 flex justify-between items-center z-40 bg-gradient-to-b from-[#1c1c1c] via-[#1c1c1c]/80 to-transparent pointer-events-none">
                 <div className="flex items-center gap-4 pointer-events-auto">
                     <span className="text-xs uppercase tracking-[0.2em] font-medium text-accent/50">TimeRead</span>
-                    <span className="text-accent/20">·</span>
-                    <span className="text-[10px] uppercase tracking-widest text-accent/40">
-                        {currentIndex + 1} of {items.length}
-                    </span>
+                    {!isArchiveMode && (
+                        <>
+                            <span className="text-accent/20">·</span>
+                            <span className="text-[10px] uppercase tracking-widest text-accent/40">
+                                {currentIndex + 1} of {items.length}
+                            </span>
+                        </>
+                    )}
                 </div>
                 <div className="flex items-center gap-6 pointer-events-auto">
                     <button onClick={handleEndSession} className="text-accent/40 hover:text-accent/80 transition-colors text-xs uppercase tracking-widest">
@@ -501,7 +508,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                                             onClick={handleContinuePartial}
                                             className="w-full max-w-sm bg-accent text-[#0f0f0f] py-4 rounded-xl font-bold uppercase tracking-[0.15em] transition-all hover:opacity-90 flex justify-center items-center gap-2"
                                         >
-                                            Continue Reading{remainingSegmentMinutes > 0 ? ` · ~${remainingSegmentMinutes} min left` : ""} →
+                                            Continue reading this article{remainingSegmentMinutes > 0 ? ` · ~${remainingSegmentMinutes} min left` : ""} →
                                         </button>
                                         <button
                                             onClick={handleSaveAndExit}
@@ -522,18 +529,44 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                                             </p>
                                         </div>
 
-                                        {/* Continue reading this piece (if multi-segment) */}
-                                        {segment.total_segments > 1 && segment.segment_index < segment.total_segments - 1 && (
-                                            <button
-                                                onClick={handleNext}
-                                                className="w-full max-w-sm bg-accent text-[#0f0f0f] py-4 rounded-xl font-bold uppercase tracking-[0.15em] transition-all hover:opacity-90 flex justify-center items-center gap-2"
-                                            >
-                                                Continue Reading →
-                                            </button>
-                                        )}
-
-                                        {/* Next piece in reading list */}
-                                        {currentIndex < items.length - 1 ? (
+                                        {/* Archive mode: next segment of the same article */}
+                                        {isArchiveMode && currentIndex < items.length - 1 ? (
+                                            <div className="w-full max-w-sm space-y-3">
+                                                <button
+                                                    onClick={handleNext}
+                                                    className="w-full max-w-sm bg-accent text-[#0f0f0f] py-4 rounded-xl font-bold uppercase tracking-[0.15em] transition-all hover:opacity-90 flex justify-center items-center gap-2"
+                                                >
+                                                    Continue reading this article →
+                                                </button>
+                                                <button
+                                                    onClick={handleEndSession}
+                                                    className="w-full py-3 text-[11px] uppercase tracking-widest text-accent/40 hover:text-accent border border-accent/10 hover:border-accent/30 rounded-xl transition-all"
+                                                >
+                                                    Exit
+                                                </button>
+                                            </div>
+                                        ) : isArchiveMode ? (
+                                            // Archive mode: finished the whole article
+                                            <div className="w-full max-w-sm space-y-3">
+                                                <div className="text-center py-4">
+                                                    <p className="text-accent/60 text-sm mb-1">Article complete!</p>
+                                                </div>
+                                                <button
+                                                    onClick={onEndSession}
+                                                    className="w-full bg-accent text-[#0f0f0f] py-4 rounded-xl font-bold uppercase tracking-[0.15em] transition-all hover:opacity-90"
+                                                >
+                                                    Back to Library
+                                                </button>
+                                                <button
+                                                    onClick={handleMarkFinished}
+                                                    disabled={finishLoading}
+                                                    className="w-full py-3 text-[11px] uppercase tracking-widest text-accent/30 hover:text-accent/60 transition-colors disabled:opacity-40"
+                                                >
+                                                    {finishLoading ? "Saving…" : "Done with this article — don't show again"}
+                                                </button>
+                                            </div>
+                                        ) : currentIndex < items.length - 1 ? (
+                                            // Normal session: next article
                                             <div className="w-full max-w-sm space-y-3">
                                                 <button
                                                     onClick={handleNext}
@@ -550,6 +583,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                                                 </button>
                                             </div>
                                         ) : (
+                                            // Normal session: last article done
                                             <div className="w-full max-w-sm space-y-3">
                                                 <div className="text-center py-4">
                                                     <p className="text-accent/60 text-sm mb-1">You&apos;ve completed your reading session!</p>
