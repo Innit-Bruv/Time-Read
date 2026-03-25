@@ -31,6 +31,7 @@ class Content(Base):
     embedding_model = Column(Text, default="text-embedding-004")  # track which model generated this
     cover_image = Column(Text)       # og:image URL extracted at ingest; null for older content
     publish_date = Column(DateTime(timezone=True))
+    is_finished = Column(Boolean, default=False, nullable=False)  # user-dismissed; excluded from recommendations
     status = Column(
         Text, default="pending",
         info={"check": "status IN ('pending','processing','ready','failed')"}

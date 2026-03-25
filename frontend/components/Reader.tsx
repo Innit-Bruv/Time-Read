@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import type { ComponentPropsWithoutRef } from "react";
-import { RecommendItem, getSegment, trackReading, SegmentResponse } from "@/lib/api";
+import { RecommendItem, getSegment, trackReading, markFinished, SegmentResponse } from "@/lib/api";
 import { useChunkMode } from "@/hooks/useChunkMode";
 
 interface SafeImageProps extends ComponentPropsWithoutRef<"img"> {
@@ -111,6 +111,7 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
     const [wordsRead, setWordsRead] = useState(0);
     const [showEndCard, setShowEndCard] = useState(false);
     const [round2Loading, setRound2Loading] = useState(false);
+    const [finishLoading, setFinishLoading] = useState(false);
     const chunk = useChunkMode(items, timeBudget);
     const scrollRef = useRef<HTMLDivElement>(null);
     const rafRef = useRef<number | null>(null);
@@ -275,6 +276,20 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
         // If on last chunk, the end card handles Round 2 / End Session
     };
 
+    // Mark article as finished — excluded from future recommendations
+    const handleMarkFinished = async () => {
+        if (!currentItem) return;
+        setFinishLoading(true);
+        try {
+            await markFinished(currentItem.content_id);
+        } catch (err) {
+            console.error("Failed to mark as finished:", err);
+        } finally {
+            setFinishLoading(false);
+            onEndSession();
+        }
+    };
+
     // Chunk mode: "Go Deeper — Round 2"
     const handleRound2 = async () => {
         await handleTrack(false);
@@ -349,9 +364,6 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                                     <span className="text-[10px] uppercase tracking-[0.25em] font-semibold text-accent/60">
                                         {segment.source}
                                     </span>
-                                    {segment.total_segments > 1 && (
-                                        <span className="text-[10px] text-accent/30 ml-3">· Part {segment.segment_index + 1} of {segment.total_segments}</span>
-                                    )}
                                 </div>
                             )}
 
@@ -530,10 +542,11 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                                                     Next: {items[currentIndex + 1].title.slice(0, 35)}{items[currentIndex + 1].title.length > 35 ? "…" : ""} →
                                                 </button>
                                                 <button
-                                                    onClick={handleEndSession}
-                                                    className="w-full py-3 text-[11px] uppercase tracking-widest text-accent/40 hover:text-accent border border-accent/10 hover:border-accent/30 rounded-xl transition-all"
+                                                    onClick={handleMarkFinished}
+                                                    disabled={finishLoading}
+                                                    className="w-full py-3 text-[11px] uppercase tracking-widest text-accent/30 hover:text-accent/60 transition-colors disabled:opacity-40"
                                                 >
-                                                    End Session
+                                                    {finishLoading ? "Saving…" : "Done with this article — don't show again"}
                                                 </button>
                                             </div>
                                         ) : (
@@ -547,6 +560,13 @@ export default function Reader({ items, onEndSession, chunkMode = false, timeBud
                                                     className="w-full bg-accent text-[#0f0f0f] py-4 rounded-xl font-bold uppercase tracking-[0.15em] transition-all hover:opacity-90"
                                                 >
                                                     Back to Home
+                                                </button>
+                                                <button
+                                                    onClick={handleMarkFinished}
+                                                    disabled={finishLoading}
+                                                    className="w-full py-3 text-[11px] uppercase tracking-widest text-accent/30 hover:text-accent/60 transition-colors disabled:opacity-40"
+                                                >
+                                                    {finishLoading ? "Saving…" : "Done with this article — don't show again"}
                                                 </button>
                                             </div>
                                         )}

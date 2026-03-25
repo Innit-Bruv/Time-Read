@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { RecommendItem, createManualSession } from "@/lib/api";
 
 interface ReadingPackProps {
@@ -25,28 +25,22 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
-    useEffect(() => {
-        const initialSelections = new Set<string>();
-        let currentSum = 0;
-        for (const item of items) {
-            if (currentSum + item.estimated_time <= targetTime) {
-                initialSelections.add(item.segment_id);
-                currentSum += item.estimated_time;
-            }
-        }
-        setSelectedIds((prev) => prev.size > 0 ? prev : initialSelections);
-    }, [items, targetTime]);
-
     if (items.length === 0) return null;
 
     const selectedItems = items.filter(item => selectedIds.has(item.segment_id));
-    const selectedTime = selectedItems.reduce((acc, item) => acc + item.estimated_time, 0);
+    // Use article_total_time for display — reflects the full article, not just the chunk served
+    const selectedTime = selectedItems.reduce((acc, item) => acc + (item.article_total_time ?? item.estimated_time), 0);
     const progressPercent = Math.min(100, (selectedTime / targetTime) * 100);
 
-    // Chunk mode: N > 1 articles selected
+    // Chunk mode: N > 1 articles selected, time is split equally
     const isChunkMode = selectedItems.length > 1;
     const chunkMinutes = isChunkMode ? targetTime / selectedItems.length : 0;
     const chunkTooShort = isChunkMode && chunkMinutes < 1;
+
+    // Single-article chunk message: article is longer than the time budget
+    const singleArticleTooLong =
+        selectedItems.length === 1 &&
+        (selectedItems[0].article_total_time ?? selectedItems[0].estimated_time) > targetTime;
 
     const toggleSelection = (segmentId: string) => {
         setSelectedIds(prev => {
@@ -96,7 +90,9 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
                     <span>
                         {isChunkMode
                             ? `${selectedItems.length} selected · ${Math.round(chunkMinutes * 10) / 10} min each`
-                            : `${Math.round(selectedTime)} min selected`}
+                            : selectedItems.length === 0
+                                ? "Select articles below"
+                                : `${Math.round(selectedTime)} min`}
                     </span>
                     <span>Target: {targetTime} min</span>
                 </div>
@@ -109,6 +105,11 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
                 {chunkTooShort && (
                     <p className="text-[11px] text-amber-400/80 uppercase tracking-widest pt-1">
                         Each article gets less than 1 min — consider fewer picks
+                    </p>
+                )}
+                {singleArticleTooLong && (
+                    <p className="text-[11px] text-accent/60 tracking-wide pt-1">
+                        {Math.round(selectedItems[0].article_total_time ?? selectedItems[0].estimated_time)}-min article — we&apos;ll start you with {targetTime} min. Your place is saved for next time.
                     </p>
                 )}
             </div>
@@ -130,16 +131,8 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
                                         </span>
                                         <span className="text-xs text-muted">·</span>
                                         <span className="text-[11px] uppercase tracking-wider text-muted">
-                                            {Math.round(item.estimated_time)} min
+                                            {Math.round(item.article_total_time ?? item.estimated_time)} min
                                         </span>
-                                        {item.is_continuation && (
-                                            <>
-                                                <span className="text-xs text-muted">·</span>
-                                                <span className="text-[11px] uppercase tracking-wider text-muted">
-                                                    Part {item.segment_index + 1}/{item.total_segments}
-                                                </span>
-                                            </>
-                                        )}
                                     </div>
                                     <h4
                                         className={`text-[22px] leading-snug transition-colors ${isSelected ? 'text-slate-100' : 'text-muted group-hover:text-slate-200'}`}
@@ -177,7 +170,9 @@ export default function ReadingPack({ items, targetTime, onBeginSession }: Readi
                     ? "Building session…"
                     : isChunkMode
                         ? `Begin Session · ${selectedItems.length} articles · ${Math.round(chunkMinutes * 10) / 10} min each`
-                        : `Begin Session (${Math.round(selectedTime)} min)`}
+                        : singleArticleTooLong
+                            ? `Begin Session (${targetTime} min)`
+                            : `Begin Session (${Math.round(selectedTime)} min)`}
             </button>
         </div>
     );

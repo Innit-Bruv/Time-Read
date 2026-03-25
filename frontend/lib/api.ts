@@ -80,7 +80,8 @@ export interface RecommendItem {
   source: string | null;
   author: string | null;
   content_type: string;
-  estimated_time: number;
+  estimated_time: number;       // time for this chunk/segment — used for session planning
+  article_total_time?: number;  // full article reading time — shown in selection pane
   segment_index: number;
   total_segments: number;
   is_continuation: boolean;
@@ -157,6 +158,12 @@ export async function createManualSession(req: ManualSessionRequest): Promise<Re
     method: "POST",
     body: JSON.stringify(req),
   });
+}
+
+// --- Finish Article ---
+
+export async function markFinished(contentId: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/content/${contentId}/finish`, { method: "POST" });
 }
 
 // --- Archive ---

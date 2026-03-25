@@ -62,3 +62,21 @@
 **Context:** Archive endpoint (`GET /archive`) needs to JOIN reading_sessions and compute completion_percent per content. The ArchiveItem schema already has `completion_percent: float = 0` — it's just not populated. Wire it up in archive.py.
 **Depends on:** TODO-006 (incomplete-first ordering) for full effect
 **Effort:** S (human: ~3h / CC: ~20min) | Priority: P2
+
+## TODO-008: "Tap to add" hint text in empty basket
+**What:** When the selection pane opens with an empty basket, show a subtle one-line hint ("Tap an article to add it to your session") that disappears once the first item is selected.
+**Why:** Without pre-selection, first-time users won't know the cards are tappable — the + icon is an affordance but the empty state gives no explicit instruction.
+**Pros:** Zero layout change; dramatically reduces first-session confusion; ~10 lines in ReadingPack.tsx.
+**Cons:** Tiny — might be seen as hand-holdy for a personal tool.
+**Context:** In ReadingPack.tsx, add a conditional `{selectedIds.size === 0 && <p className="text-xs text-center text-muted">Tap an article to add it to your session</p>}` below the progress bar. Disappears the moment any item is added.
+**Depends on:** Fix 4 (empty basket on open) in this PR
+**Effort:** XS (human: ~15min / CC: ~3min) | Priority: P3
+
+## TODO-009: Mark as finished from Archive page
+**What:** Add a "Mark as finished" action to each archive item so users can dismiss articles without reading them. Show a visual indicator (greyed out + checkmark) for finished articles in the archive list.
+**Why:** Currently the only way to mark an article finished is at the end of a reading session. Users should be able to prune their library from the archive.
+**Pros:** Completes the "mark as finished" feature end-to-end; pairs naturally with TODO-007 (archive progress badge).
+**Cons:** Requires archive list to include is_finished state from the Content model.
+**Context:** Archive endpoint (GET /archive) needs to return is_finished from Content. ArchiveItem schema needs is_finished: bool = False field. Archive page renders a checkmark button per item that calls POST /content/{id}/finish. The is_finished column is added in the main "mark as finished" PR. This TODO is only the archive UI layer.
+**Depends on:** Fix 2 (mark as finished backend + reader button) in this PR; TODO-007 for styling context
+**Effort:** S (human: ~2h / CC: ~15min) | Priority: P2

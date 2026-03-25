@@ -35,7 +35,8 @@ class RecommendItem(BaseModel):
     source: Optional[str]
     author: Optional[str]
     content_type: str
-    estimated_time: float
+    estimated_time: float             # time for this chunk/segment — used for session planning
+    article_total_time: float = 0     # full article reading time — shown in selection pane
     segment_index: int
     total_segments: int
     is_continuation: bool

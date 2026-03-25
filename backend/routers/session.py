@@ -230,6 +230,24 @@ def re_extract_metadata(content_id: uuid.UUID, db: Session = Depends(get_db)):
     return {"ok": True, "updated": updated, "content_id": str(content_id)}
 
 
+@router.post("/content/{content_id}/finish")
+def finish_content(content_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Mark an article as finished — it will no longer appear in recommendations.
+
+    Idempotent: calling this on an already-finished article is a no-op.
+    """
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    if not content.is_finished:
+        content.is_finished = True
+        db.commit()
+        logger.info(f"Article {content_id} marked finished by user")
+
+    return {"ok": True, "content_id": str(content_id)}
+
+
 @router.post("/session/track", response_model=TrackResponse)
 def track_reading(req: TrackRequest, db: Session = Depends(get_db)):
     """Record reading progress for a segment."""

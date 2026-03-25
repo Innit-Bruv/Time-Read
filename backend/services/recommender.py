@@ -47,6 +47,9 @@ def generate_pack(
     # Compute completed segment IDs once — reused by all four tiers.
     completed_ids = _get_completed_segment_ids(db)
 
+    # Compute finished content IDs once — excluded from all tiers.
+    finished_content_ids = _get_finished_content_ids(db)
+
     # Fetch paragraph offsets for all unfinished segments once — avoids N+1 in tier 1.
     para_offset_map = _get_paragraph_offset_map(db)
 
@@ -55,7 +58,7 @@ def generate_pack(
     seg_count_cache: dict = {}
 
     # 1. Unfinished segments (highest priority)
-    unfinished = _get_unfinished_segments(db, completed_ids, para_offset_map, reading_speed)
+    unfinished = _get_unfinished_segments(db, completed_ids, finished_content_ids, para_offset_map, reading_speed)
     for seg_info in unfinished:
         if remaining_time <= 0:
             break
@@ -67,7 +70,7 @@ def generate_pack(
     if remaining_time > 0 and topic:
         used_segment_ids = {item["segment_id"] for item in items}
         similar = _get_topic_similar_segments(
-            db, topic, content_type, used_segment_ids, completed_ids, seg_count_cache
+            db, topic, content_type, used_segment_ids, completed_ids, finished_content_ids, seg_count_cache
         )
         for seg_info in similar:
             if remaining_time <= 0:
@@ -80,7 +83,7 @@ def generate_pack(
     if remaining_time > 0 and content_type and not topic:
         used_segment_ids = {item["segment_id"] for item in items}
         typed = _get_typed_segments(
-            db, content_type, used_segment_ids, completed_ids, seg_count_cache
+            db, content_type, used_segment_ids, completed_ids, finished_content_ids, seg_count_cache
         )
         for seg_info in typed:
             if remaining_time <= 0:
@@ -93,7 +96,7 @@ def generate_pack(
     if remaining_time > 0:
         used_segment_ids = {item["segment_id"] for item in items}
         oldest = _get_oldest_unread_segments(
-            db, used_segment_ids, completed_ids, seg_count_cache
+            db, used_segment_ids, completed_ids, finished_content_ids, seg_count_cache
         )
         for seg_info in oldest:
             if remaining_time <= 0:
@@ -108,10 +111,21 @@ def generate_pack(
     if not items and remaining_time > 0:
         used_ids = completed_ids
         partial = _try_partial_slice_fallback(
-            db, remaining_time, reading_speed, used_ids, para_offset_map, seg_count_cache
+            db, remaining_time, reading_speed, used_ids, finished_content_ids, para_offset_map, seg_count_cache
         )
         if partial:
             items.append(partial)
+
+    # Dedup: each article (content_id) should appear at most once.
+    # The recommender operates on segments internally, but the selection pane
+    # shows articles. Keep the first (highest-priority) segment per article.
+    seen_content_ids: set = set()
+    deduped = []
+    for item in items:
+        if item["content_id"] not in seen_content_ids:
+            seen_content_ids.add(item["content_id"])
+            deduped.append(item)
+    items = deduped
 
     # Cap each item to MAX_CHUNK_MINUTES — any segment longer than this gets a
     # paragraph-level partial slice so the Reader shows the "Want to finish?" CTA.
@@ -150,6 +164,16 @@ def _get_completed_segment_ids(db: Session) -> set:
         .all()
     )
     return {row[0] for row in completed}
+
+
+def _get_finished_content_ids(db: Session) -> set:
+    """Get set of content IDs marked finished by the user. Called once per pack."""
+    finished = (
+        db.query(Content.id)
+        .filter(Content.is_finished == True)
+        .all()
+    )
+    return {row[0] for row in finished}
 
 
 def _get_paragraph_offset_map(db: Session) -> dict:
@@ -241,6 +265,7 @@ def _partial_slice(
 def _get_unfinished_segments(
     db: Session,
     completed_ids: set,
+    finished_content_ids: set,
     para_offset_map: dict,
     reading_speed: int,
 ) -> list[dict]:
@@ -262,6 +287,7 @@ def _get_unfinished_segments(
         .filter(Segment.id.in_(started_subquery))
         .filter(~Segment.id.in_(completed_ids))
         .filter(Content.status == "ready")
+        .filter(Content.is_finished == False)
         .order_by(Content.created_at.asc())
         .all()
     )
@@ -294,6 +320,7 @@ def _get_topic_similar_segments(
     content_type: Optional[str],
     exclude_ids: set,
     completed_ids: set,
+    finished_content_ids: set,
     seg_count_cache: dict,
 ) -> list[dict]:
     """Get segments from content similar to the topic via vector similarity."""
@@ -308,6 +335,7 @@ def _get_topic_similar_segments(
     query = (
         db.query(Content)
         .filter(Content.status == "ready")
+        .filter(Content.is_finished == False)
         .filter(Content.embedding.isnot(None))
     )
     if content_type:
@@ -337,6 +365,7 @@ def _get_typed_segments(
     content_type: str,
     exclude_ids: set,
     completed_ids: set,
+    finished_content_ids: set,
     seg_count_cache: dict,
 ) -> list[dict]:
     """Get unread segments of a specific content type."""
@@ -346,6 +375,7 @@ def _get_typed_segments(
         db.query(Segment, Content)
         .join(Content, Segment.content_id == Content.id)
         .filter(Content.status == "ready")
+        .filter(Content.is_finished == False)
         .filter(Content.content_type == content_type)
         .order_by(Content.created_at.desc(), Segment.segment_index)
         .all()
@@ -364,6 +394,7 @@ def _get_oldest_unread_segments(
     db: Session,
     exclude_ids: set,
     completed_ids: set,
+    finished_content_ids: set,
     seg_count_cache: dict,
 ) -> list[dict]:
     """Get oldest unread segments."""
@@ -373,6 +404,7 @@ def _get_oldest_unread_segments(
         db.query(Segment, Content)
         .join(Content, Segment.content_id == Content.id)
         .filter(Content.status == "ready")
+        .filter(Content.is_finished == False)
         .order_by(Content.created_at.asc(), Segment.segment_index)
         .all()
     )
@@ -391,6 +423,7 @@ def _try_partial_slice_fallback(
     remaining_time: float,
     reading_speed: int,
     exclude_ids: set,
+    finished_content_ids: set,
     para_offset_map: dict,
     seg_count_cache: dict,
 ) -> Optional[dict]:
@@ -412,6 +445,7 @@ def _try_partial_slice_fallback(
         .filter(Segment.id.in_(started_subquery))
         .filter(~Segment.id.in_(exclude_ids))
         .filter(Content.status == "ready")
+        .filter(Content.is_finished == False)
         .order_by(Content.created_at.asc())
         .first()
     )
@@ -422,6 +456,7 @@ def _try_partial_slice_fallback(
             db.query(Segment, Content)
             .join(Content, Segment.content_id == Content.id)
             .filter(Content.status == "ready")
+            .filter(Content.is_finished == False)
             .filter(~Segment.id.in_(exclude_ids))
             .order_by(Content.created_at.asc(), Segment.segment_index)
             .first()
@@ -477,6 +512,7 @@ def _segment_to_item(
         "author": content.author,
         "content_type": content.content_type,
         "estimated_time": segment.estimated_time,
+        "article_total_time": content.estimated_time or segment.estimated_time,
         "segment_index": segment.segment_index,
         "total_segments": total_segments,
         "is_continuation": segment.segment_index > 0,
