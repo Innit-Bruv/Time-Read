@@ -39,6 +39,30 @@ def ingest_content(req: IngestRequest, db: Session = Depends(get_db)):
     # Check for duplicate URL
     existing = db.query(Content).filter(Content.url == req.url).first()
     if existing:
+        # If previously soft-deleted, un-delete and re-process instead of silently ignoring
+        if existing.is_deleted:
+            existing.is_deleted = False
+            existing.status = "pending"
+            existing.error_message = None
+            db.commit()
+            db.refresh(existing)
+            try:
+                from tasks.process_content import process_content_task
+                process_content_task.delay(str(existing.id))
+            except Exception:
+                try:
+                    from tasks.process_content import run_pipeline
+                    run_pipeline(str(existing.id))
+                except Exception as e:
+                    import logging as _logging
+                    _logging.getLogger(__name__).error(
+                        f"Re-ingest pipeline failed for {existing.id}: {e}"
+                    )
+            return IngestResponse(
+                content_id=existing.id,
+                status="processing",
+                message="Content queued for processing",
+            )
         return IngestResponse(
             content_id=existing.id,
             status=existing.status,

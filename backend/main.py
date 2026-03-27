@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from routers import ingest, recommend, archive, session  # noqa
+from routers import ingest, recommend, archive, session, content  # noqa
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,7 @@ app.include_router(ingest.router, tags=["ingest"])
 app.include_router(recommend.router, tags=["recommend"])
 app.include_router(archive.router, tags=["archive"])
 app.include_router(session.router, tags=["session"])
+app.include_router(content.router, tags=["content"])
 
 
 @app.get("/health")
