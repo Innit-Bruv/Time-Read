@@ -32,6 +32,7 @@ class Content(Base):
     cover_image = Column(Text)       # og:image URL extracted at ingest; null for older content
     publish_date = Column(DateTime(timezone=True))
     is_finished = Column(Boolean, default=False, nullable=False)  # user-dismissed; excluded from recommendations
+    is_deleted = Column(Boolean, default=False, nullable=False)   # soft-deleted; hidden from archive + recommendations
     status = Column(
         Text, default="pending",
         info={"check": "status IN ('pending','processing','ready','failed')"}
