@@ -17,12 +17,20 @@ def get_archive(
     search: str = Query(default="", description="Text search"),
     content_type: str = Query(default="", description="Filter by content type"),
     sort: str = Query(default="recent", description="Sort order: recent|oldest|unread"),
+    hide_finished: bool = Query(default=True, description="Hide finished articles"),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
     """Browse saved content with search, filtering, and pagination."""
     query = db.query(Content)
+
+    # Always exclude soft-deleted articles
+    query = query.filter(Content.is_deleted == False)  # noqa: E712
+
+    # Optionally hide finished articles (default: on)
+    if hide_finished:
+        query = query.filter(Content.is_finished == False)  # noqa: E712
 
     # Search filter
     if search:
