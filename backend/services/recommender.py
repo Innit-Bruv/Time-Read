@@ -1,8 +1,8 @@
 """Recommendation engine — generates time-fitted reading packs.
 
-Priority ordering per PRD Section 11:
-1. Unfinished segments (highest priority)
-2. Topic-similar (vector similarity search)
+Priority ordering:
+1. Topic-similar (vector similarity search) — when topic given
+2. Unfinished segments (in-progress articles)
 3. Content type match
 4. Oldest unread
 """
@@ -30,7 +30,7 @@ def generate_pack(
     """Return ALL unread, unfinished articles ordered by priority.
 
     The selection pane shows every available article — the AI orders them
-    (unfinished → topic-similar → content-type → oldest) but never filters
+    (topic-similar → unfinished → content-type → oldest when topic given, else unfinished → content-type → oldest) but never filters
     by time budget. The user picks which articles to read; the time budget
     determines chunk size when reading, not what's visible.
 
@@ -48,17 +48,19 @@ def generate_pack(
     para_offset_map = _get_paragraph_offset_map(db)
     seg_count_cache: dict = {}
 
-    # 1. Unfinished segments (highest priority — in-progress articles first)
-    unfinished = _get_unfinished_segments(db, completed_ids, finished_content_ids, para_offset_map, reading_speed)
-    items.extend(unfinished)
-
-    # 2. Topic-similar segments (vector similarity)
+    # 1. Topic-similar segments (vector similarity) — highest priority when topic given
     if topic:
-        used_segment_ids = {item["segment_id"] for item in items}
         similar = _get_topic_similar_segments(
-            db, topic, content_type, used_segment_ids, completed_ids, finished_content_ids, seg_count_cache
+            db, topic, content_type, set(), completed_ids, finished_content_ids, seg_count_cache
         )
         items.extend(similar)
+
+    # 2. Unfinished segments (in-progress articles)
+    used_segment_ids = {item["segment_id"] for item in items}
+    unfinished = _get_unfinished_segments(db, completed_ids, finished_content_ids, para_offset_map, reading_speed)
+    # Only add unfinished articles not already in topic results
+    unfinished = [u for u in unfinished if u["segment_id"] not in used_segment_ids]
+    items.extend(unfinished)
 
     # 3. Content type filtered
     if content_type:
