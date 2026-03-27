@@ -1,6 +1,6 @@
 """Add is_deleted to content for soft-delete support
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: h7i8j9k0l1m2
 Revises: f6a7b8c9d0e1
 Create Date: 2026-03-27
 
@@ -12,7 +12,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect
 
-revision = 'a1b2c3d4e5f6'
+revision = 'h7i8j9k0l1m2'
 down_revision = 'f6a7b8c9d0e1'
 branch_labels = None
 depends_on = None
