@@ -190,6 +190,7 @@ export async function getArchive(params?: {
   search?: string;
   content_type?: string;
   sort?: string;
+  hide_finished?: boolean;
   page?: number;
   limit?: number;
 }): Promise<ArchiveResponse> {
@@ -197,8 +198,19 @@ export async function getArchive(params?: {
   if (params?.search) queryParams.search = params.search;
   if (params?.content_type) queryParams.content_type = params.content_type;
   if (params?.sort) queryParams.sort = params.sort;
+  if (params?.hide_finished !== undefined) queryParams.hide_finished = String(params.hide_finished);
   if (params?.page) queryParams.page = String(params.page);
   if (params?.limit) queryParams.limit = String(params.limit);
 
   return apiFetch("/api/archive", { params: queryParams });
+}
+
+// --- Delete / Undelete ---
+
+export async function deleteContent(contentId: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/content/${contentId}/delete`, { method: "DELETE" });
+}
+
+export async function undeleteContent(contentId: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/content/${contentId}/undelete`, { method: "POST" });
 }

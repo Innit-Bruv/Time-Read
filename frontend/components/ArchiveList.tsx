@@ -1,11 +1,17 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArchiveItem, getArchive } from "@/lib/api";
+import { ArchiveItem, getArchive, deleteContent, undeleteContent } from "@/lib/api";
 
 interface ArchiveListProps {
     onSelectItem?: (item: ArchiveItem) => void;
     loadingContentId?: string | null;
+}
+
+interface UndoState {
+    item: ArchiveItem;
+    index: number;
+    timer: ReturnType<typeof setTimeout>;
 }
 
 const PAGE_SIZE = 20;
@@ -56,8 +62,11 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
     const [search, setSearch] = useState("");
     const [contentType, setContentType] = useState("");
     const [sort, setSort] = useState("recent");
+    const [hideFinished, setHideFinished] = useState(true);
     const [loading, setLoading] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+    const [undoState, setUndoState] = useState<UndoState | null>(null);
     const sentinelRef = useRef<HTMLDivElement>(null);
 
     const hasMore = items.length < total;
@@ -72,6 +81,7 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
                 search: search || undefined,
                 content_type: contentType || undefined,
                 sort,
+                hide_finished: hideFinished,
                 page: targetPage,
                 limit: PAGE_SIZE,
             });
@@ -82,7 +92,7 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
         } finally {
             setLoading(false);
         }
-    }, [search, contentType, sort, page]);
+    }, [search, contentType, sort, hideFinished, page]);
 
     // Load next page and append
     const loadMore = useCallback(async () => {
@@ -94,6 +104,7 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
                 search: search || undefined,
                 content_type: contentType || undefined,
                 sort,
+                hide_finished: hideFinished,
                 page: nextPage,
                 limit: PAGE_SIZE,
             });
@@ -105,13 +116,13 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
         } finally {
             setLoadingMore(false);
         }
-    }, [loadingMore, hasMore, page, search, contentType, sort]);
+    }, [loadingMore, hasMore, page, search, contentType, sort, hideFinished]);
 
     // Initial load
     useEffect(() => {
         loadArchive(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [contentType, sort]);
+    }, [contentType, sort, hideFinished]);
 
     // Intersection Observer for infinite scroll
     useEffect(() => {
@@ -131,9 +142,93 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
         return () => observer.disconnect();
     }, [hasMore, loading, loadingMore, loadMore]);
 
+    // Clean up undo timer on unmount
+    useEffect(() => {
+        return () => {
+            if (undoState) clearTimeout(undoState.timer);
+        };
+    }, [undoState]);
+
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
         loadArchive(true);
+    };
+
+    const handleDelete = async (e: React.MouseEvent, item: ArchiveItem) => {
+        e.stopPropagation();
+        if (deletingIds.has(item.content_id)) return;
+
+        // Cancel any existing undo (commit the previous delete)
+        if (undoState) {
+            clearTimeout(undoState.timer);
+            setUndoState(null);
+        }
+
+        // Optimistic remove
+        const index = items.findIndex(i => i.content_id === item.content_id);
+        setItems(prev => prev.filter(i => i.content_id !== item.content_id));
+        setTotal(prev => prev - 1);
+        setDeletingIds(prev => new Set(prev).add(item.content_id));
+
+        try {
+            await deleteContent(item.content_id);
+
+            // Set undo timer — 5 seconds to undo
+            const timer = setTimeout(() => {
+                setUndoState(null);
+                setDeletingIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(item.content_id);
+                    return next;
+                });
+            }, 5000);
+
+            setUndoState({ item, index, timer });
+        } catch (err) {
+            console.error("Failed to delete:", err);
+            // Revert optimistic update
+            setItems(prev => {
+                const next = [...prev];
+                next.splice(index, 0, item);
+                return next;
+            });
+            setTotal(prev => prev + 1);
+            setDeletingIds(prev => {
+                const next = new Set(prev);
+                next.delete(item.content_id);
+                return next;
+            });
+        }
+    };
+
+    const handleUndo = async () => {
+        if (!undoState) return;
+        clearTimeout(undoState.timer);
+        const { item, index } = undoState;
+        setUndoState(null);
+
+        // Optimistic re-insert at original position
+        setItems(prev => {
+            const next = [...prev];
+            next.splice(index, 0, item);
+            return next;
+        });
+        setTotal(prev => prev + 1);
+
+        try {
+            await undeleteContent(item.content_id);
+        } catch (err) {
+            console.error("Failed to undo delete:", err);
+            // Revert the re-insert
+            setItems(prev => prev.filter(i => i.content_id !== item.content_id));
+            setTotal(prev => prev - 1);
+        } finally {
+            setDeletingIds(prev => {
+                const next = new Set(prev);
+                next.delete(item.content_id);
+                return next;
+            });
+        }
     };
 
     return (
@@ -172,6 +267,13 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
                         {opt.label}
                     </button>
                 ))}
+                <span className="text-muted mx-2">|</span>
+                <button
+                    className={`pill text-xs ${!hideFinished ? "active" : ""}`}
+                    onClick={() => setHideFinished(prev => !prev)}
+                >
+                    {hideFinished ? "Show Finished" : "Hide Finished"}
+                </button>
             </div>
 
             {/* Count */}
@@ -209,7 +311,7 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
                         return (
                             <div
                                 key={item.content_id}
-                                className={`group flex flex-col bg-accent/5 border rounded-2xl overflow-hidden transition-all cursor-pointer ${
+                                className={`group relative flex flex-col bg-accent/5 border rounded-2xl overflow-hidden transition-all cursor-pointer ${
                                     isLoading
                                         ? "border-accent/50 opacity-70 pointer-events-none"
                                         : "border-accent/5 hover:border-accent/30"
@@ -226,6 +328,14 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
                                             {Math.round(item.completion_percent)}% read
                                         </div>
                                     )}
+                                    {/* Delete button — appears on hover */}
+                                    <button
+                                        className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-[#0f0f0f]/80 backdrop-blur-md rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/20 hover:text-red-300 hover:border-red-400/50"
+                                        onClick={(e) => handleDelete(e, item)}
+                                        title="Remove from library"
+                                    >
+                                        <span className="material-symbols-outlined text-sm leading-none">delete</span>
+                                    </button>
                                 </div>
                                 <div className="p-5 flex flex-col flex-1">
                                     <div className="flex items-center gap-2 mb-2">
@@ -266,6 +376,21 @@ export default function ArchiveList({ onSelectItem, loadingContentId }: ArchiveL
             <div ref={sentinelRef} className="h-1" />
             {loadingMore && (
                 <div className="text-center text-muted py-4">Loading more...</div>
+            )}
+
+            {/* Undo toast */}
+            {undoState && (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 px-5 py-3 bg-[#1a1a1a] border border-accent/20 rounded-2xl shadow-2xl backdrop-blur-md">
+                    <span className="text-sm text-[#f1f5f9]">
+                        &ldquo;{undoState.item.title.length > 40 ? undoState.item.title.slice(0, 40) + "…" : undoState.item.title}&rdquo; removed
+                    </span>
+                    <button
+                        className="text-sm font-semibold text-accent hover:text-accent/80 transition-colors"
+                        onClick={handleUndo}
+                    >
+                        Undo
+                    </button>
+                </div>
             )}
         </div>
     );
