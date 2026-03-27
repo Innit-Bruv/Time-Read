@@ -1,10 +1,19 @@
 /**
  * TimeRead Extension — Background Service Worker
- * Handles content status polling, context menu, and auto-sync.
+ * Handles save queue, status polling, context menu, and badge updates.
+ *
+ * Queue entry shape:
+ *   { id: string, url: string, title: string,
+ *     status: "pending"|"processing"|"done"|"failed",
+ *     error?: string, savedAt: number, estimatedTime?: number }
  */
 
+const POLL_INTERVAL_MS = 2000;
+const MAX_POLLS = 30; // 60s max per item
+const QUEUE_KEY = "saveQueue";
+
 // ═══════════════════════════════════════════
-// CONTEXT MENU (Feature 1 — Right-click save)
+// CONTEXT MENU
 // ═══════════════════════════════════════════
 chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.create({
@@ -18,42 +27,24 @@ chrome.runtime.onInstalled.addListener(() => {
         contexts: ["page"],
     });
 
-    // Set up auto-sync alarm (Feature 4)
+    // Auto-sync alarm
     chrome.alarms.create("twitter-bookmark-sync", { periodInMinutes: 60 });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === "timeread-save-link") {
+        // Save the right-clicked link URL (not the current page)
         const url = info.linkUrl;
         const title = info.selectionText || url;
-        handleSave(url, title).then((result) => {
-            // Show a badge on the extension icon temporarily
-            if (result.success) {
-                chrome.action.setBadgeText({ text: "✓", tabId: tab.id });
-                chrome.action.setBadgeBackgroundColor({ color: "#4CAF50", tabId: tab.id });
-            } else {
-                chrome.action.setBadgeText({ text: "✗", tabId: tab.id });
-                chrome.action.setBadgeBackgroundColor({ color: "#f44336", tabId: tab.id });
-            }
-            setTimeout(() => chrome.action.setBadgeText({ text: "", tabId: tab.id }), 3000);
-        });
+        handleSave(url, title);
     }
     if (info.menuItemId === "timeread-save-page") {
-        handleSave(tab.url, tab.title).then((result) => {
-            if (result.success) {
-                chrome.action.setBadgeText({ text: "✓", tabId: tab.id });
-                chrome.action.setBadgeBackgroundColor({ color: "#4CAF50", tabId: tab.id });
-            } else {
-                chrome.action.setBadgeText({ text: "✗", tabId: tab.id });
-                chrome.action.setBadgeBackgroundColor({ color: "#f44336", tabId: tab.id });
-            }
-            setTimeout(() => chrome.action.setBadgeText({ text: "", tabId: tab.id }), 3000);
-        });
+        handleSave(tab.url, tab.title);
     }
 });
 
 // ═══════════════════════════════════════════
-// AUTO-SYNC TWITTER BOOKMARKS (Feature 4)
+// AUTO-SYNC TWITTER BOOKMARKS
 // ═══════════════════════════════════════════
 chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "twitter-bookmark-sync") {
@@ -63,75 +54,25 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 async function autoSyncTwitterBookmarks() {
     const { apiUrl, token, twitterAutoSync } = await chrome.storage.local.get([
-        "apiUrl", "token", "twitterAutoSync"
+        "apiUrl", "token", "twitterAutoSync",
     ]);
-
-    // Only sync if enabled and configured
     if (!twitterAutoSync || !apiUrl || !token) return;
 
-    console.log("[TimeRead] Auto-syncing Twitter bookmarks...");
-
-    // We can't scrape from background — instead, we inject a script into
-    // any open twitter bookmarks tab. If none is open, skip this cycle.
-    const tabs = await chrome.tabs.query({ url: ["*://twitter.com/i/bookmarks*", "*://x.com/i/bookmarks*"] });
-
+    const tabs = await chrome.tabs.query({
+        url: ["*://twitter.com/i/bookmarks*", "*://x.com/i/bookmarks*"],
+    });
     if (tabs.length > 0) {
-        // Send message to content script to trigger auto-import
         chrome.tabs.sendMessage(tabs[0].id, { type: "AUTO_IMPORT" });
-        console.log("[TimeRead] Triggered auto-import on tab", tabs[0].id);
-    } else {
-        console.log("[TimeRead] No Twitter bookmark tab open, skipping auto-sync");
     }
 }
 
 // ═══════════════════════════════════════════
-// CORE SAVE LOGIC
+// MESSAGE LISTENER
 // ═══════════════════════════════════════════
-
-// Poll content status after save
-async function pollStatus(contentId, apiUrl, token) {
-    const MAX_POLLS = 15; // 30s max
-    const POLL_INTERVAL = 2000;
-
-    for (let i = 0; i < MAX_POLLS; i++) {
-        try {
-            const response = await fetch(`${apiUrl}/api/content/${contentId}/status`, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-            });
-
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            const data = await response.json();
-
-            if (data.status === "ready") {
-                return {
-                    success: true,
-                    title: data.title,
-                    time: data.estimated_time,
-                };
-            } else if (data.status === "failed") {
-                return {
-                    success: false,
-                    error: data.error_message || "Failed to extract",
-                };
-            }
-
-            // Still processing, wait and retry
-            await new Promise((r) => setTimeout(r, POLL_INTERVAL));
-        } catch (err) {
-            console.error("Poll error:", err);
-            await new Promise((r) => setTimeout(r, POLL_INTERVAL));
-        }
-    }
-
-    return { success: false, error: "Timed out waiting for processing" };
-}
-
-// Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type === "SAVE_URL") {
         handleSave(request.url, request.title).then(sendResponse);
-        return true; // Keep channel open for async response
+        return true;
     }
     if (request.type === "GET_SETTINGS") {
         chrome.storage.local.get(["apiUrl", "token", "twitterAutoSync"], (result) => {
@@ -144,8 +85,83 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ ok: true });
         return true;
     }
+    if (request.type === "GET_QUEUE") {
+        getQueue().then((queue) => sendResponse({ queue }));
+        return true;
+    }
+    if (request.type === "RETRY_ITEM") {
+        retryItem(request.itemId).then(sendResponse);
+        return true;
+    }
+    if (request.type === "CLEAR_DONE") {
+        clearDoneItems().then(() => sendResponse({ ok: true }));
+        return true;
+    }
 });
 
+// ═══════════════════════════════════════════
+// QUEUE STORAGE HELPERS
+// ═══════════════════════════════════════════
+async function getQueue() {
+    const data = await chrome.storage.local.get(QUEUE_KEY);
+    return data[QUEUE_KEY] || [];
+}
+
+async function setQueue(queue) {
+    try {
+        await chrome.storage.local.set({ [QUEUE_KEY]: queue });
+    } catch (err) {
+        // QuotaExceededError — prune done items and retry once
+        if (err.name === "QuotaExceededError" || (err.message && err.message.includes("QUOTA_BYTES"))) {
+            const pruned = queue.filter((item) => item.status !== "done");
+            try {
+                await chrome.storage.local.set({ [QUEUE_KEY]: pruned });
+            } catch (e2) {
+                console.error("[TimeRead] Queue storage quota exceeded even after pruning:", e2);
+            }
+        } else {
+            console.error("[TimeRead] setQueue error:", err);
+        }
+    }
+}
+
+async function updateItem(id, patch) {
+    const queue = await getQueue();
+    const idx = queue.findIndex((item) => item.id === id);
+    if (idx === -1) return;
+    queue[idx] = { ...queue[idx], ...patch };
+    await setQueue(queue);
+    updateBadge(queue);
+}
+
+async function clearDoneItems() {
+    const queue = await getQueue();
+    const active = queue.filter((item) => item.status !== "done");
+    await setQueue(active);
+    updateBadge(active);
+}
+
+// ═══════════════════════════════════════════
+// BADGE
+// ═══════════════════════════════════════════
+function updateBadge(queue) {
+    const pending = queue.filter((i) => i.status === "pending" || i.status === "processing").length;
+    const failed = queue.filter((i) => i.status === "failed").length;
+
+    if (failed > 0) {
+        chrome.action.setBadgeText({ text: String(failed) });
+        chrome.action.setBadgeBackgroundColor({ color: "#f44336" });
+    } else if (pending > 0) {
+        chrome.action.setBadgeText({ text: String(pending) });
+        chrome.action.setBadgeBackgroundColor({ color: "#FF9800" });
+    } else {
+        chrome.action.setBadgeText({ text: "" });
+    }
+}
+
+// ═══════════════════════════════════════════
+// CORE SAVE + POLL LOGIC
+// ═══════════════════════════════════════════
 async function handleSave(url, title) {
     const { apiUrl, token } = await chrome.storage.local.get(["apiUrl", "token"]);
 
@@ -153,11 +169,26 @@ async function handleSave(url, title) {
         return { success: false, error: "Configure your TimeRead API URL in settings" };
     }
 
+    // Generate a temporary local ID for queue tracking
+    const localId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    // Add to queue as pending
+    const queue = await getQueue();
+    const entry = {
+        id: localId,
+        url,
+        title: title || url,
+        status: "pending",
+        savedAt: Date.now(),
+    };
+    queue.push(entry);
+    await setQueue(queue);
+    updateBadge(queue);
+
     const headers = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
     try {
-        // POST /api/ingest — routed through Next.js proxy which adds the backend secret
         const response = await fetch(`${apiUrl}/api/ingest`, {
             method: "POST",
             headers,
@@ -172,13 +203,79 @@ async function handleSave(url, title) {
         const data = await response.json();
 
         if (data.status === "ready") {
-            return { success: true, message: "Already saved", title: data.title };
+            await updateItem(localId, {
+                id: data.content_id,
+                status: "done",
+                title: data.title || title || url,
+            });
+            return { success: true, message: "Already saved" };
         }
 
-        // Poll for processing completion
-        const result = await pollStatus(data.content_id, apiUrl, token);
+        // Mark processing with real content_id, swap local ID
+        const realId = data.content_id;
+        const currentQueue = await getQueue();
+        const idx = currentQueue.findIndex((i) => i.id === localId);
+        if (idx !== -1) {
+            currentQueue[idx] = { ...currentQueue[idx], id: realId, status: "processing" };
+            await setQueue(currentQueue);
+            updateBadge(currentQueue);
+        }
+
+        // Poll for completion
+        const result = await pollUntilDone(realId, apiUrl, token);
         return result;
     } catch (err) {
+        await updateItem(localId, { status: "failed", error: err.message });
         return { success: false, error: err.message };
     }
+}
+
+async function pollUntilDone(contentId, apiUrl, token) {
+    for (let i = 0; i < MAX_POLLS; i++) {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        try {
+            const response = await fetch(`${apiUrl}/api/content/${contentId}/status`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const data = await response.json();
+
+            if (data.status === "ready") {
+                await updateItem(contentId, {
+                    status: "done",
+                    title: data.title,
+                    estimatedTime: data.estimated_time,
+                });
+                return { success: true, title: data.title, time: data.estimated_time };
+            } else if (data.status === "failed") {
+                const errorMsg = data.error_message || "Failed to extract content";
+                await updateItem(contentId, { status: "failed", error: errorMsg });
+                return { success: false, error: errorMsg };
+            }
+            // still processing — update title if we got one
+            if (data.title) {
+                await updateItem(contentId, { title: data.title });
+            }
+        } catch (err) {
+            console.error("[TimeRead] Poll error:", err);
+        }
+    }
+
+    const timeoutMsg = "Timed out waiting for processing";
+    await updateItem(contentId, { status: "failed", error: timeoutMsg });
+    return { success: false, error: timeoutMsg };
+}
+
+async function retryItem(itemId) {
+    const queue = await getQueue();
+    const item = queue.find((i) => i.id === itemId);
+    if (!item) return { success: false, error: "Item not found" };
+
+    // Remove old entry and re-save
+    const filtered = queue.filter((i) => i.id !== itemId);
+    await setQueue(filtered);
+    updateBadge(filtered);
+
+    return handleSave(item.url, item.title);
 }

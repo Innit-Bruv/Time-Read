@@ -11,18 +11,33 @@
     <div id="main-view">
       <div class="header">
         <h1>TimeRead</h1>
+        <div class="tab-bar">
+          <button class="tab-btn active" id="tab-save">Save</button>
+          <button class="tab-btn" id="tab-queue">Queue <span id="queue-badge" class="queue-badge hidden"></span></button>
+        </div>
       </div>
 
-      <div id="page-info">
-        <p id="page-title" class="page-title">Loading...</p>
-        <p id="page-url" class="page-url"></p>
+      <!-- Save Tab -->
+      <div id="save-tab">
+        <div id="page-info">
+          <p id="page-title" class="page-title">Loading...</p>
+          <p id="page-url" class="page-url"></p>
+        </div>
+
+        <button id="save-btn" class="btn-primary">Save to TimeRead</button>
+        <div id="status" class="status hidden"></div>
+        <button id="settings-btn" class="btn-link">⚙ Settings</button>
       </div>
 
-      <button id="save-btn" class="btn-primary">Save to TimeRead</button>
-
-      <div id="status" class="status hidden"></div>
-
-      <button id="settings-btn" class="btn-link">⚙ Settings</button>
+      <!-- Queue Tab -->
+      <div id="queue-tab" class="hidden">
+        <div id="queue-list">
+          <div id="queue-empty" class="queue-empty">
+            No saves yet — right-click any link or use the Save button
+          </div>
+        </div>
+        <button id="clear-done-btn" class="btn-link hidden">Clear completed</button>
+      </div>
     </div>
 
     <!-- Settings View -->
