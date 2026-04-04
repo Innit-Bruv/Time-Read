@@ -4,7 +4,7 @@ Key invariants under test:
 - Never splits mid-sentence (always on paragraph boundary)
 - Produces at least one segment for non-empty text
 - Segment indices are 0-based and contiguous
-- Estimated time = word_count / reading_speed
+- Estimated time = word_count / 200 (fixed DISPLAY_WPM)
 - Oversized single paragraphs still produce one segment (not split further)
 """
 import sys
@@ -12,7 +12,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from services.segmenter import segment_content, SEGMENT_MINUTES, DEFAULT_READING_SPEED
+from services.segmenter import segment_content, SEGMENT_MINUTES, DISPLAY_WPM
 
 
 def _make_text(word_count: int, paragraphs: int = 1) -> str:
@@ -48,7 +48,7 @@ class TestSegmentContent:
         """A single paragraph that exceeds the segment size must not be split.
         The segmenter only breaks on double-newlines (paragraph boundaries).
         """
-        words_per_segment = DEFAULT_READING_SPEED * SEGMENT_MINUTES
+        words_per_segment = DISPLAY_WPM * SEGMENT_MINUTES
         huge_paragraph = " ".join(["word"] * (words_per_segment * 3))
         result = segment_content(huge_paragraph)
         # One giant paragraph → exactly one segment (no mid-paragraph break)
@@ -57,7 +57,7 @@ class TestSegmentContent:
 
     def test_paragraph_boundary_respected(self):
         """Text is split only at double newlines, never within a paragraph."""
-        words_per_segment = DEFAULT_READING_SPEED * SEGMENT_MINUTES
+        words_per_segment = DISPLAY_WPM * SEGMENT_MINUTES
         # Two paragraphs, each slightly under the limit — should produce 1 segment
         para = " ".join(["word"] * (words_per_segment // 3))
         text = f"{para}\n\n{para}\n\n{para}"
@@ -72,17 +72,17 @@ class TestSegmentContent:
         assert result[0]["word_count"] == 200
         assert result[0]["estimated_time"] == round(200 / 200, 2)
 
-    def test_custom_reading_speed_affects_segment_size(self):
-        """Faster readers → fewer, larger segments. Slower readers → more, smaller ones."""
-        words_per_segment_fast = 400 * SEGMENT_MINUTES  # 400 wpm
-        text = _make_text(word_count=words_per_segment_fast * 3, paragraphs=60)
+    def test_reading_speed_param_is_ignored(self):
+        """reading_speed parameter is kept for API compat but always uses DISPLAY_WPM."""
+        text = _make_text(word_count=DISPLAY_WPM * SEGMENT_MINUTES * 3, paragraphs=60)
 
-        fast_result = segment_content(text, reading_speed=400)
-        slow_result = segment_content(text, reading_speed=100)
+        result_400 = segment_content(text, reading_speed=400)
+        result_100 = segment_content(text, reading_speed=100)
 
-        # At 400 wpm, fewer segments needed (bigger chunks)
-        # At 100 wpm, more segments (smaller chunks)
-        assert len(fast_result) < len(slow_result)
+        # Both produce identical segments — reading_speed is ignored
+        assert len(result_400) == len(result_100)
+        for a, b in zip(result_400, result_100):
+            assert a["estimated_time"] == b["estimated_time"]
 
     def test_all_text_is_preserved(self):
         """No words should be lost between paragraphs."""
@@ -106,7 +106,7 @@ class TestSegmentContent:
 
     def test_large_text_multiple_segments(self):
         """A long article produces multiple segments."""
-        text = _make_text(word_count=DEFAULT_READING_SPEED * SEGMENT_MINUTES * 5, paragraphs=50)
+        text = _make_text(word_count=DISPLAY_WPM * SEGMENT_MINUTES * 5, paragraphs=50)
         result = segment_content(text)
         assert len(result) >= 3
 

@@ -80,3 +80,12 @@
 **Context:** Archive endpoint (GET /archive) needs to return is_finished from Content. ArchiveItem schema needs is_finished: bool = False field. Archive page renders a checkmark button per item that calls POST /content/{id}/finish. The is_finished column is added in the main "mark as finished" PR. This TODO is only the archive UI layer.
 **Depends on:** Fix 2 (mark as finished backend + reader button) in this PR; TODO-007 for styling context
 **Effort:** S (human: ~2h / CC: ~15min) | Priority: P2
+
+## TODO-010: Queue persistence across browser restarts
+**What:** Replace chrome.storage.local queue storage with IndexedDB so the save queue survives the background service worker being killed (browser restart, Chrome update, idle suspension).
+**Why:** Currently the queue is lost if Chrome kills the service worker. Articles may be mid-processing and the user loses visibility. chrome.storage.local survives popup close but not SW termination.
+**Pros:** Queue is truly durable. Retry state survives restarts. Professional-grade reliability.
+**Cons:** IndexedDB in service workers has quirks (requires async wrapper, no synchronous access). More complex than chrome.storage.local.
+**Context:** background.js queue engine uses chrome.storage.local for queue entries. Replace storage calls with idb-keyval or a thin IndexedDB wrapper. The queue entry schema and polling logic stay the same — only the storage layer changes.
+**Depends on:** Extension queue visual (this plan — build queue first, persist it later)
+**Effort:** M (human: ~1 day / CC: ~30min) | Priority: P3

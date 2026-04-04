@@ -1,4 +1,5 @@
 """Session router — POST /session/track, GET /content/{id}/segment/{id}, GET /content/{id}/segments."""
+import logging
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +11,8 @@ from db.database import get_db
 from models.content import Content, Segment, ReadingSession, UserStats
 from models.schemas import TrackRequest, TrackResponse, SegmentResponse, RecommendItem, RecommendResponse, ManualSessionRequest
 from services.text_utils import split_paragraphs
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 

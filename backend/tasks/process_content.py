@@ -37,7 +37,7 @@ def run_pipeline(content_id: str) -> None:
     any Celery runtime context (no self.retry, no task binding).
     """
     from db.database import SessionLocal
-    from models.content import Content, Segment, UserStats
+    from models.content import Content, Segment
     from services.extractor import fetch_and_extract, ExtractionError
     from services.segmenter import segment_content
     from services.embedder import generate_embedding
@@ -76,15 +76,11 @@ def run_pipeline(content_id: str) -> None:
         if result.get("publish_date"):
             content.publish_date = result["publish_date"]
 
-        # Step 2: Get reading speed from user_stats
-        user_stats = db.query(UserStats).filter(UserStats.id == 1).first()
-        reading_speed = int(user_stats.reading_speed) if user_stats else 200
+        # Step 2: Calculate estimated reading time (fixed 200 WPM — matches display)
+        content.estimated_time = round(content.word_count / 200, 2)
 
-        # Step 3: Calculate estimated reading time
-        content.estimated_time = round(content.word_count / reading_speed, 2)
-
-        # Step 4: Segment
-        segments_data = segment_content(result["clean_text"], reading_speed)
+        # Step 3: Segment
+        segments_data = segment_content(result["clean_text"])
 
         # Clear old segments if re-processing
         db.query(Segment).filter(Segment.content_id == content.id).delete()

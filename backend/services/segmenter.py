@@ -4,7 +4,7 @@ Constraint: Never split mid-sentence. Always break on paragraph boundaries.
 """
 import re
 
-DEFAULT_READING_SPEED = 200  # wpm, overridden by user_stats
+DISPLAY_WPM = 200  # fixed — all time calculations use this, never user_stats
 SEGMENT_MINUTES = 6  # target segment length in minutes
 
 
@@ -18,19 +18,21 @@ def _strip_markdown(text: str) -> int:
     return len(clean.split())
 
 
-def segment_content(text: str, reading_speed: int = DEFAULT_READING_SPEED) -> list[dict]:
-    """Split text into segments of roughly `reading_speed * SEGMENT_MINUTES` words.
-    
+def segment_content(text: str, reading_speed: int = DISPLAY_WPM) -> list[dict]:
+    """Split text into segments of roughly DISPLAY_WPM * SEGMENT_MINUTES words.
+
     Always breaks on paragraph boundaries (double newline).
-    
+    reading_speed parameter is kept for API compat but ignored — we always
+    use DISPLAY_WPM (200) so stored estimated_time matches display time.
+
     Args:
         text: Clean text to segment.
-        reading_speed: Words per minute (from user_stats).
-    
+        reading_speed: Ignored. Always uses DISPLAY_WPM (200).
+
     Returns:
         List of dicts with keys: text, word_count, estimated_time, segment_index
     """
-    words_per_segment = reading_speed * SEGMENT_MINUTES
+    words_per_segment = DISPLAY_WPM * SEGMENT_MINUTES
     paragraphs = text.split("\n\n")
     segments = []
     current_chunk: list[str] = []
@@ -59,11 +61,11 @@ def segment_content(text: str, reading_speed: int = DEFAULT_READING_SPEED) -> li
     return segments
 
 
-def _build_segment(paragraphs: list[str], reading_speed: int, index: int) -> dict:
+def _build_segment(paragraphs: list[str], _reading_speed: int, index: int) -> dict:
     """Build a segment dict from a list of paragraphs."""
     text = "\n\n".join(paragraphs)
     word_count = _strip_markdown(text)
-    estimated_time = round(word_count / reading_speed, 2)
+    estimated_time = round(word_count / DISPLAY_WPM, 2)
 
     return {
         "text": text,
