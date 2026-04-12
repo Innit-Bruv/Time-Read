@@ -100,9 +100,10 @@ interface ReaderProps {
     chunkMode?: boolean;
     timeBudget?: number;
     onRequestRound2?: () => Promise<void>;
+    segmentOverride?: Record<string, SegmentResponse>; // demo mode: segmentId → static data, skips API + tracking
 }
 
-export default function Reader({ items: initialItems, onEndSession, chunkMode = false, timeBudget = 0, onRequestRound2 }: ReaderProps) {
+export default function Reader({ items: initialItems, onEndSession, chunkMode = false, timeBudget = 0, onRequestRound2, segmentOverride }: ReaderProps) {
     const [liveItems, setLiveItems] = useState<RecommendItem[]>(initialItems);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [segment, setSegment] = useState<SegmentResponse | null>(null);
@@ -172,13 +173,14 @@ export default function Reader({ items: initialItems, onEndSession, chunkMode = 
         setEffectiveEnd(currentItem?.paragraph_end ?? null);
     }, [currentIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Load segment text
+    // Load segment text — use static override in demo mode, otherwise fetch from API
     const loadSegment = useCallback(async () => {
         if (!currentItem) return;
         setLoading(true);
         setShowEndCard(false);
         try {
-            const data = await getSegment(currentItem.content_id, currentItem.segment_id);
+            const data = segmentOverride?.[currentItem.segment_id]
+                ?? await getSegment(currentItem.content_id, currentItem.segment_id);
             setSegment(data);
             setHeroFailed(false);
             setStartTime(Date.now());
@@ -189,7 +191,7 @@ export default function Reader({ items: initialItems, onEndSession, chunkMode = 
         } finally {
             setLoading(false);
         }
-    }, [currentItem]);
+    }, [currentItem, segmentOverride]);
 
     useEffect(() => {
         loadSegment();
@@ -228,7 +230,7 @@ export default function Reader({ items: initialItems, onEndSession, chunkMode = 
     }, [segment, showEndCard, visibleWordCount]);
 
     const handleTrack = async (completed: boolean) => {
-        if (!currentItem) return;
+        if (!currentItem || segmentOverride) return; // skip tracking in demo mode
         const timeSpent = (Date.now() - startTime) / 1000;
         // Partial chunks never mark the segment as completed — record where we stopped.
         try {
@@ -288,6 +290,7 @@ export default function Reader({ items: initialItems, onEndSession, chunkMode = 
     // Mark article as finished — excluded from future recommendations
     const handleMarkFinished = async () => {
         if (!currentItem) return;
+        if (segmentOverride) { onEndSession(); return; } // skip in demo mode
         setFinishLoading(true);
         try {
             await markFinished(currentItem.content_id);
