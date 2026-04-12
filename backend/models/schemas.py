@@ -36,7 +36,7 @@ class RecommendItem(BaseModel):
     author: Optional[str]
     content_type: str
     estimated_time: float             # time for this chunk/segment — used for session planning
-    article_total_time: float = 0     # full article reading time — shown in selection pane
+    article_total_time: Optional[float] = None  # full article reading time — shown in selection pane
     segment_index: int
     total_segments: int
     is_continuation: bool
@@ -126,3 +126,11 @@ class ParsedQuery(BaseModel):
 class ManualSessionRequest(BaseModel):
     content_ids: list[uuid.UUID]
     time_budget: float  # minutes
+
+
+# --- Auto Pack ---
+
+class AutoPackRequest(BaseModel):
+    time_budget: float
+    topic: Optional[str] = None
+    content_type: Optional[str] = None

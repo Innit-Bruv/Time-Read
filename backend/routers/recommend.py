@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from auth import verify_api_key
 from db.database import get_db
-from models.schemas import RecommendRequest, RecommendResponse, RecommendItem
-from services.recommender import generate_pack
+from models.schemas import RecommendRequest, RecommendResponse, RecommendItem, AutoPackRequest
+from services.recommender import generate_pack, auto_pack
 from services.llm_parser import parse_query
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
@@ -59,6 +59,52 @@ def recommend(req: RecommendRequest, db: Session = Depends(get_db)):
             content_type=item["content_type"],
             estimated_time=item["estimated_time"],
             article_total_time=item.get("article_total_time", 0),
+            segment_index=item["segment_index"],
+            total_segments=item["total_segments"],
+            is_continuation=item["is_continuation"],
+            paragraph_start=item.get("paragraph_start", 0),
+            paragraph_end=item.get("paragraph_end"),
+        )
+        for item in pack["items"]
+    ]
+
+    return RecommendResponse(
+        session_id=uuid.UUID(pack["session_id"]),
+        total_estimated_time=pack["total_estimated_time"],
+        items=items,
+    )
+
+
+@router.post("/recommend/auto-pack", response_model=RecommendResponse)
+def recommend_auto_pack(req: AutoPackRequest, db: Session = Depends(get_db)):
+    """Generate a time-fitted reading pack automatically — no user selection required.
+
+    Greedily fills the budget with highest-priority articles, slicing the last
+    article to fit exactly. Returns the same shape as /recommend.
+    """
+    pack = auto_pack(
+        db=db,
+        time_budget=req.time_budget,
+        topic=req.topic,
+        content_type=req.content_type,
+    )
+
+    if not pack["items"]:
+        raise HTTPException(
+            status_code=404,
+            detail="Nothing matches that time window. Try a longer session.",
+        )
+
+    items = [
+        RecommendItem(
+            content_id=uuid.UUID(item["content_id"]),
+            segment_id=uuid.UUID(item["segment_id"]),
+            title=item["title"],
+            source=item["source"],
+            author=item["author"],
+            content_type=item["content_type"],
+            estimated_time=item["estimated_time"],
+            article_total_time=item.get("article_total_time"),
             segment_index=item["segment_index"],
             total_segments=item["total_segments"],
             is_continuation=item["is_continuation"],

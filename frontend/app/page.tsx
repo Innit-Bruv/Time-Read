@@ -4,9 +4,10 @@ import { useState } from "react";
 import TimeSelector from "@/components/TimeSelector";
 import ReadingPack from "@/components/ReadingPack";
 import Reader from "@/components/Reader";
+import AutoPackView from "@/components/AutoPackView";
 import { getRecommendations, createManualSession, RecommendResponse } from "@/lib/api";
 
-type View = "home" | "pack" | "reading";
+type View = "home" | "autoPack" | "customize" | "reading";
 
 const CONTENT_TYPES = [
   { label: "Any", value: "" },
@@ -40,7 +41,7 @@ export default function HomePage() {
         content_type: contentType || undefined,
       });
       setRecommendation(res);
-      setView("pack");
+      setView("customize");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to get recommendations";
       setError(msg.toLowerCase().includes("404") || msg.toLowerCase().includes("no item")
@@ -148,12 +149,12 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* Begin Reading button — prominent but compact */}
+            {/* Begin Reading button — goes straight to auto-pack, no modal */}
             <div className="pt-2 md:pt-4 flex justify-center">
               <button
                 className="group flex items-center justify-center gap-3 w-full max-w-sm px-10 py-5 bg-transparent border-2 border-accent/30 rounded-full text-accent hover:bg-accent hover:text-[#0f0f0f] transition-all duration-500 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-accent"
                 disabled={!timeBudget}
-                onClick={() => setShowModal(true)}
+                onClick={() => setView("autoPack")}
               >
                 <span className="uppercase tracking-[0.25em] text-sm md:text-base font-bold">
                   Begin Reading
@@ -223,7 +224,25 @@ export default function HomePage() {
           </>
         )}
 
-        {view === "pack" && recommendation && (
+        {view === "autoPack" && timeBudget && (
+          <AutoPackView
+            timeBudget={timeBudget}
+            topic={topic || undefined}
+            contentType={contentType || undefined}
+            onStartReading={(pack) => {
+              setRecommendation(pack);
+              handleBeginSession();
+            }}
+            onCustomize={(pack) => {
+              // Fetch the full unfiltered list so the user can pick freely
+              setRecommendation(pack);
+              handleGetRecommendations();
+            }}
+            onBack={() => setView("home")}
+          />
+        )}
+
+        {view === "customize" && recommendation && (
           <>
             <ReadingPack
               items={recommendation.items}
@@ -241,9 +260,9 @@ export default function HomePage() {
             />
             <button
               className="btn-ghost w-full"
-              onClick={() => { setView("home"); setRecommendation(null); }}
+              onClick={() => { setView("autoPack"); setRecommendation(null); }}
             >
-              ← Change preferences
+              ← Back to suggested pack
             </button>
           </>
         )}

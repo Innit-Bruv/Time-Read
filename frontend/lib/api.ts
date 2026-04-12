@@ -102,6 +102,19 @@ export async function getRecommendations(req: RecommendRequest): Promise<Recomme
   });
 }
 
+export interface AutoPackRequest {
+  time_budget: number;
+  topic?: string;
+  content_type?: string;
+}
+
+export async function getAutoPack(req: AutoPackRequest): Promise<RecommendResponse> {
+  return apiFetch("/api/recommend/auto-pack", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
 // --- Segment Reading ---
 
 export interface SegmentResponse {

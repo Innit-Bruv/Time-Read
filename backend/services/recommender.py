@@ -12,7 +12,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 
-from models.content import Content, Segment, ReadingSession, UserStats
+from models.content import Content, Segment, ReadingSession
 from services.embedder import generate_embedding
 from services.text_utils import split_paragraphs
 
@@ -21,28 +21,19 @@ logger = logging.getLogger(__name__)
 MAX_CHUNK_MINUTES = 10  # hard cap per reading item — never show more than this at once
 
 
-def generate_pack(
+def _get_ordered_candidates(
     db: Session,
     time_budget: float,
     topic: Optional[str] = None,
     content_type: Optional[str] = None,
-) -> dict:
-    """Return ALL unread, unfinished articles ordered by priority.
+) -> list[dict]:
+    """Return all unread, unfinished articles ordered by priority with article_total_time populated.
 
-    The selection pane shows every available article — the AI orders them
-    (topic-similar → unfinished → content-type → oldest when topic given, else unfinished → content-type → oldest) but never filters
-    by time budget. The user picks which articles to read; the time budget
-    determines chunk size when reading, not what's visible.
-
-    Returns:
-        dict with session_id, total_estimated_time, items[]
+    Priority: topic-similar → unfinished → content-type → oldest unread.
+    One entry per content_id (deduped). estimated_time reflects remaining reading time.
+    Does NOT apply chunk-capping — callers do that themselves.
     """
-    items = []
-
-    # Get user reading speed (used for chunk sizing, not display)
-    user_stats = db.query(UserStats).filter(UserStats.id == 1).first()
-    reading_speed = int(user_stats.reading_speed) if user_stats else 200
-
+    items: list[dict] = []
     completed_ids = _get_completed_segment_ids(db)
     finished_content_ids = _get_finished_content_ids(db)
     para_offset_map = _get_paragraph_offset_map(db)
@@ -57,10 +48,8 @@ def generate_pack(
 
     # 2. Unfinished segments (in-progress articles)
     used_segment_ids = {item["segment_id"] for item in items}
-    unfinished = _get_unfinished_segments(db, completed_ids, finished_content_ids, para_offset_map, reading_speed)
-    # Only add unfinished articles not already in topic results
-    unfinished = [u for u in unfinished if u["segment_id"] not in used_segment_ids]
-    items.extend(unfinished)
+    unfinished = _get_unfinished_segments(db, completed_ids, finished_content_ids, para_offset_map, DISPLAY_WPM)
+    items.extend([u for u in unfinished if u["segment_id"] not in used_segment_ids])
 
     # 3. Content type filtered
     if content_type:
@@ -90,9 +79,7 @@ def generate_pack(
             deduped.append(item)
     items = deduped
 
-    # Compute article_total_time as SUM(word_count)/200 across all segments.
-    # This is the ground-truth display time — independent of whatever estimated_time
-    # was stored at ingest (which may be stale or computed with wrong speed).
+    # Populate article_total_time — ground-truth full-article time at 200 WPM.
     content_ids_in_pack = [uuid.UUID(item["content_id"]) for item in items]
     if content_ids_in_pack:
         word_sum_rows = (
@@ -104,17 +91,37 @@ def generate_pack(
         word_sum_map = {row[0]: int(row[1] or 0) for row in word_sum_rows}
         for item in items:
             total_words = word_sum_map.get(uuid.UUID(item["content_id"]), 0)
-            item["article_total_time"] = round(total_words / 200, 1) if total_words else item["estimated_time"]
+            item["article_total_time"] = round(total_words / DISPLAY_WPM, 1) if total_words else item["estimated_time"]
+
+    return items
+
+
+def generate_pack(
+    db: Session,
+    time_budget: float,
+    topic: Optional[str] = None,
+    content_type: Optional[str] = None,
+) -> dict:
+    """Return ALL unread, unfinished articles ordered by priority.
+
+    The selection pane shows every available article — the AI orders them
+    (topic-similar → unfinished → content-type → oldest when topic given, else unfinished → content-type → oldest) but never filters
+    by time budget. The user picks which articles to read; the time budget
+    determines chunk size when reading, not what's visible.
+
+    Returns:
+        dict with session_id, total_estimated_time, items[]
+    """
+    items = _get_ordered_candidates(db, time_budget, topic, content_type)
 
     # Cap each item's chunk to min(time_budget, MAX_CHUNK_MINUTES).
-    # This controls how much is served in a single session for single-article reads.
     chunk_cap = min(time_budget, MAX_CHUNK_MINUTES)
     for i, item in enumerate(items):
         if item["estimated_time"] > chunk_cap:
             seg = db.query(Segment).filter(Segment.id == item["segment_id"]).first()
             if seg:
                 start = item.get("paragraph_start", 0) or 0
-                partial = _partial_slice(seg, chunk_cap, reading_speed, start)
+                partial = _partial_slice(seg, chunk_cap, DISPLAY_WPM, start)
                 if partial:
                     items[i] = {
                         **item,
@@ -128,6 +135,53 @@ def generate_pack(
         "session_id": str(uuid.uuid4()),
         "total_estimated_time": round(total_time, 1),
         "items": items,
+    }
+
+
+def auto_pack(
+    db: Session,
+    time_budget: float,
+    topic: Optional[str] = None,
+    content_type: Optional[str] = None,
+) -> dict:
+    """Greedily fill a reading pack to exactly fit the time budget.
+
+    No user selection required — picks highest-priority articles and slices
+    the last one to fit. Returns the same shape as generate_pack().
+    """
+    candidates = _get_ordered_candidates(db, time_budget, topic, content_type)
+
+    selected: list[dict] = []
+    remaining = time_budget
+
+    for candidate in candidates:
+        if remaining <= 0:
+            break
+        item_time = candidate["estimated_time"]
+        if item_time <= remaining:
+            selected.append(candidate)
+            remaining = round(remaining - item_time, 2)
+        else:
+            # Slice to fit remaining budget — minimum 1 minute to be worth showing
+            if remaining >= 1.0:
+                seg = db.query(Segment).filter(Segment.id == candidate["segment_id"]).first()
+                if seg:
+                    start = candidate.get("paragraph_start", 0) or 0
+                    partial = _partial_slice(seg, remaining, DISPLAY_WPM, start)
+                    if partial:
+                        selected.append({
+                            **candidate,
+                            "estimated_time": partial["estimated_time"],
+                            "paragraph_end": partial["paragraph_end"],
+                        })
+            break
+
+    total_time = round(sum(item["estimated_time"] for item in selected), 1)
+
+    return {
+        "session_id": str(uuid.uuid4()),
+        "total_estimated_time": total_time,
+        "items": selected,
     }
 
 
@@ -413,68 +467,6 @@ def _get_oldest_unread_segments(
         if seg.id not in exclude_all
     ]
 
-
-def _try_partial_slice_fallback(
-    db: Session,
-    remaining_time: float,
-    reading_speed: int,
-    exclude_ids: set,
-    finished_content_ids: set,
-    para_offset_map: dict,
-    seg_count_cache: dict,
-) -> Optional[dict]:
-    """Pick the best available segment and slice it to fit remaining_time.
-
-    Priority: unfinished segments first, then oldest unread.
-    Returns a recommendation item dict or None if no eligible segment exists.
-    """
-    # Try unfinished segments first
-    started_subquery = (
-        db.query(ReadingSession.segment_id)
-        .filter(ReadingSession.completed == False)
-        .distinct()
-        .subquery()
-    )
-    row = (
-        db.query(Segment, Content)
-        .join(Content, Segment.content_id == Content.id)
-        .filter(Segment.id.in_(started_subquery))
-        .filter(~Segment.id.in_(exclude_ids))
-        .filter(Content.status == "ready")
-        .filter(Content.is_finished == False)
-        .filter(Content.is_deleted == False)
-        .order_by(Content.created_at.asc())
-        .first()
-    )
-
-    if not row:
-        # Fall back to oldest unread
-        row = (
-            db.query(Segment, Content)
-            .join(Content, Segment.content_id == Content.id)
-            .filter(Content.status == "ready")
-            .filter(Content.is_finished == False)
-        .filter(Content.is_deleted == False)
-            .filter(~Segment.id.in_(exclude_ids))
-            .order_by(Content.created_at.asc(), Segment.segment_index)
-            .first()
-        )
-
-    if not row:
-        return None
-
-    seg, content = row
-    start_para = para_offset_map.get(seg.id, 0)
-    chunk_time = min(remaining_time, MAX_CHUNK_MINUTES)
-    partial = _partial_slice(seg, chunk_time, reading_speed, start_para)
-    if not partial:
-        return None
-
-    _bulk_populate_cache(db, [(seg, content)], seg_count_cache)
-    item = _segment_to_item(seg, content, seg_count_cache, paragraph_start=partial["paragraph_start"])
-    item["estimated_time"] = partial["estimated_time"]
-    item["paragraph_end"] = partial["paragraph_end"]
-    return item
 
 
 def _keyword_sort(items: list[dict], topic: str) -> list[dict]:
